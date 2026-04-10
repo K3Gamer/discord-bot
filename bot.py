@@ -12,7 +12,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== DATA ======
-user_text_channels = {}
 user_voice_channels = {}
 
 # ====== BAD WORD ======
@@ -38,52 +37,17 @@ def censor_text(text):
             return "#" * len(text)
     return text
 
-# ====== TABLE ======
-def tao_bang(title, date, data):
-    mon_list = data.split(";")
-    subjects, contents = [], []
-
-    for mon in mon_list:
-        if ":" in mon:
-            ten, nd = mon.split(":",1)
-            subjects.append(ten.strip())
-            contents.append(nd.strip())
-
-    if not subjects:
-        return "❌ Không có dữ liệu!"
-
-    max_sub = max(len(s) for s in subjects)
-    max_con = max(len(c) for c in contents)
-
-    msg = "=============================\n"
-    msg += f"{title} ({date})\n"
-    msg += "=============================\n"
-    msg += f"{'Môn'.ljust(max_sub)} | {'Nội dung'.ljust(max_con)}\n"
-    msg += "-"*(max_sub + max_con + 3) + "\n"
-
-    for s,c in zip(subjects, contents):
-        msg += f"{s.ljust(max_sub)} | {c.ljust(max_con)}\n"
-
-    msg += "============================="
-    return msg
-
 # ====== READY ======
 @bot.event
 async def on_ready():
     print(f"Bot online: {bot.user}")
 
-# ====== MESSAGE ======
+# ====== FILTER ======
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # ❌ KHÔNG LỌC trong kênh 💬
-    if message.channel.name.startswith("💬"):
-        await bot.process_commands(message)
-        return
-
-    # ✅ LỌC ở kênh thường
     censored = censor_text(message.content)
     if censored != message.content:
         try:
@@ -95,26 +59,19 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ====== AUTO CREATE ======
+# ====== AUTO CREATE VOICE ======
 @bot.event
 async def on_voice_state_update(member, before, after):
     guild = member.guild
-
     trigger_voice = "➕Nhấn để tạo Voice"
-    trigger_chat = "➕Nhấn vào đây để tạo Chat"
 
+    # tạo room
     if after.channel and after.channel.name == trigger_voice:
         vc = await guild.create_voice_channel(f"🎙️ {member.name}", category=after.channel.category)
         user_voice_channels[member.id] = vc.id
         await member.move_to(vc)
 
-    if after.channel and after.channel.name == trigger_chat:
-        category = discord.utils.get(guild.categories, name="Chat")
-        tc = await guild.create_text_channel(f"💬-{member.name}".lower(), category=category)
-        user_text_channels[member.id] = tc.id
-        await member.move_to(None)
-        await tc.send(f"👋 {member.mention}")
-
+    # auto delete khi rỗng
     if before.channel and before.channel.name.startswith("🎙️") and len(before.channel.members) == 0:
         cid = before.channel.id
         await before.channel.delete()
@@ -123,36 +80,38 @@ async def on_voice_state_update(member, before, after):
             if vid == cid:
                 del user_voice_channels[uid]
 
-# ====== BB ======
-@bot.command()
-async def bb(ctx, so_mon: int, *, data):
-    await ctx.message.delete()
-    today = datetime.now().strftime("%d/%m/%Y")
-    msg = tao_bang("BÁO BÀI NGÀY", today, data)
-    await ctx.send(f"```\n{msg}\n```")
+# ====== UI MESSAGE ======
+async def send_voice_ui(channel):
+    msg = """
+🎛️ **VOICE CONTROL PANEL**
 
-# ====== BT ======
+!rename <tên> → Đổi tên phòng
+!private → Khoá phòng
+!unprivate → Mở phòng
+!add @user → Thêm người
+!block @user → Kick quyền người đó
+!delete → Xoá phòng
+
+⚠️ Chỉ dùng trong kênh này!
+"""
+    await channel.send(f"```\n{msg}\n```")
+
+# ====== RESET UI ======
 @bot.command()
-async def bt(ctx, date: str, so_mon: int, *, data):
+async def resetUIvoice(ctx):
     await ctx.message.delete()
-    msg = tao_bang("BÀI TẬP", date, data)
-    await ctx.send(f"```\n{msg}\n```")
+
+    await ctx.channel.purge(limit=20)
+    await send_voice_ui(ctx.channel)
 
 # ====== RENAME ======
 @bot.command()
 async def rename(ctx, *, name):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        tc = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
-        vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-
-        if tc: await tc.edit(name=f"💬-{name}".lower())
-        if vc: await vc.edit(name=f"🎙️ {name}")
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-        if vc: await vc.edit(name=f"🎙️ {name}")
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
+    if vc:
+        await vc.edit(name=f"🎙️ {name}")
 
     msg = await ctx.send("✅ Đã đổi tên")
     await msg.delete(delay=5)
@@ -162,33 +121,14 @@ async def rename(ctx, *, name):
 async def private(ctx):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        ch = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
 
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            ctx.author: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+        ctx.author: discord.PermissionOverwrite(connect=True, speak=True)
+    }
 
-        for role in ctx.guild.roles:
-            if role.permissions.administrator:
-                overwrites[role] = discord.PermissionOverwrite(read_messages=False)
-
-        await ch.edit(overwrites=overwrites)
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        ch = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-            ctx.author: discord.PermissionOverwrite(connect=True, speak=True)
-        }
-
-        for role in ctx.guild.roles:
-            if role.permissions.administrator:
-                overwrites[role] = discord.PermissionOverwrite(connect=False)
-
-        await ch.edit(overwrites=overwrites)
+    await vc.edit(overwrites=overwrites)
 
     msg = await ctx.send("🔒 Private ON")
     await msg.delete(delay=5)
@@ -198,23 +138,13 @@ async def private(ctx):
 async def unprivate(ctx):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        ch = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
 
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(connect=True, speak=True)
+    }
 
-        await ch.edit(overwrites=overwrites)
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        ch = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(connect=True, speak=True)
-        }
-
-        await ch.edit(overwrites=overwrites)
+    await vc.edit(overwrites=overwrites)
 
     msg = await ctx.send("🔓 Private OFF")
     await msg.delete(delay=5)
@@ -224,13 +154,8 @@ async def unprivate(ctx):
 async def add(ctx, member: discord.Member):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        ch = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
-        await ch.set_permissions(member, read_messages=True, send_messages=True)
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        ch = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-        await ch.set_permissions(member, connect=True, speak=True)
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
+    await vc.set_permissions(member, connect=True, speak=True)
 
     msg = await ctx.send(f"✅ Added {member.mention}")
     await msg.delete(delay=5)
@@ -240,13 +165,8 @@ async def add(ctx, member: discord.Member):
 async def block(ctx, member: discord.Member):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        ch = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
-        await ch.set_permissions(member, overwrite=None)
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        ch = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-        await ch.set_permissions(member, overwrite=None)
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
+    await vc.set_permissions(member, connect=False)
 
     msg = await ctx.send(f"🚫 Blocked {member.mention}")
     await msg.delete(delay=5)
@@ -256,20 +176,10 @@ async def block(ctx, member: discord.Member):
 async def delete(ctx):
     await ctx.message.delete()
 
-    if ctx.channel.name == "⚙️cài-đặt-kênh-chat":
-        ch = ctx.guild.get_channel(user_text_channels.get(ctx.author.id))
-        if ch:
-            await ch.delete()
-            del user_text_channels[ctx.author.id]
-
-    elif ctx.channel.name == "⚙️cài-đặt-kênh-voice":
-        ch = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-        if ch:
-            await ch.delete()
-            del user_voice_channels[ctx.author.id]
-
-    msg = await ctx.send("🗑️ Deleted")
-    await msg.delete(delay=5)
+    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
+    if vc:
+        await vc.delete()
+        del user_voice_channels[ctx.author.id]
 
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
