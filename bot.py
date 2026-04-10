@@ -1,7 +1,5 @@
 import discord
 from discord.ext import commands
-from datetime import datetime
-import re
 import os
 
 intents = discord.Intents.default()
@@ -11,67 +9,132 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ====== DATA ======
 user_voice_channels = {}
 
-# ====== BAD WORD ======
-bad_words = [
-    "dm","đm","dmm","dmmm","cc","vl","ngu","dcm",
-    "cặc","cac","cak","c@c","c4c",
-    "cu","lồn","lon","l0n","l.o.n",
-    "đụ","dit","djt","đjt",
-    "fuck","bitch","shit",
-    "buồi","chịch","đéo","deo","deos",
-    "hâm","óc chó","oc cho"
-]
+# ====== VIEW BUTTON ======
+class VoiceControlView(discord.ui.View):
+    def __init__(self, owner_id):
+        super().__init__(timeout=None)
+        self.owner_id = owner_id
 
-def normalize(text):
-    text = text.lower()
-    text = re.sub(r'[^a-z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ ]', '', text)
-    return text
+    def check_owner(self, interaction):
+        return interaction.user.id == self.owner_id
 
-def censor_text(text):
-    norm = normalize(text)
-    for word in bad_words:
-        if word in norm:
-            return "#" * len(text)
-    return text
+    @discord.ui.button(label="✏️ Rename", style=discord.ButtonStyle.primary)
+    async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        await interaction.response.send_message("Nhập tên mới:", ephemeral=True)
+
+        def check(m):
+            return m.author == interaction.user
+
+        msg = await bot.wait_for("message", check=check)
+        vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+        await vc.edit(name=f"🎙️ {msg.content}")
+        await msg.delete()
+
+    @discord.ui.button(label="🔒 Lock", style=discord.ButtonStyle.danger)
+    async def lock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+        await vc.set_permissions(interaction.guild.default_role, connect=False)
+
+        await interaction.response.send_message("🔒 Đã khoá", ephemeral=True)
+
+    @discord.ui.button(label="🔓 Unlock", style=discord.ButtonStyle.success)
+    async def unlock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+        await vc.set_permissions(interaction.guild.default_role, connect=True)
+
+        await interaction.response.send_message("🔓 Đã mở", ephemeral=True)
+
+    @discord.ui.button(label="➕ Add", style=discord.ButtonStyle.secondary)
+    async def add(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        await interaction.response.send_message("Tag người cần thêm:", ephemeral=True)
+
+        def check(m):
+            return m.author == interaction.user
+
+        msg = await bot.wait_for("message", check=check)
+        if msg.mentions:
+            member = msg.mentions[0]
+            vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+            await vc.set_permissions(member, connect=True, speak=True)
+
+        await msg.delete()
+
+    @discord.ui.button(label="🚫 Block", style=discord.ButtonStyle.secondary)
+    async def block(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        await interaction.response.send_message("Tag người cần block:", ephemeral=True)
+
+        def check(m):
+            return m.author == interaction.user
+
+        msg = await bot.wait_for("message", check=check)
+        if msg.mentions:
+            member = msg.mentions[0]
+            vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+            await vc.set_permissions(member, connect=False)
+
+        await msg.delete()
+
+    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
+    async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.check_owner(interaction):
+            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+
+        vc = interaction.guild.get_channel(user_voice_channels.get(interaction.user.id))
+        await vc.delete()
+        del user_voice_channels[interaction.user.id]
+
+        await interaction.response.send_message("🗑️ Đã xoá phòng", ephemeral=True)
+
+
+# ====== CREATE UI ======
+async def create_ui(channel, owner_id):
+    embed = discord.Embed(
+        title="🎛️ Voice Control Panel",
+        description="Dùng nút bên dưới để điều khiển phòng voice của bạn",
+        color=0x00ffcc
+    )
+    await channel.send(embed=embed, view=VoiceControlView(owner_id))
+
 
 # ====== READY ======
 @bot.event
 async def on_ready():
     print(f"Bot online: {bot.user}")
 
-# ====== FILTER ======
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    censored = censor_text(message.content)
-    if censored != message.content:
-        try:
-            await message.delete()
-            await message.channel.send(f"{message.author.mention}: {censored}", delete_after=5)
-        except:
-            pass
-        return
-
-    await bot.process_commands(message)
-
-# ====== AUTO CREATE VOICE ======
+# ====== AUTO VOICE ======
 @bot.event
 async def on_voice_state_update(member, before, after):
     guild = member.guild
-    trigger_voice = "➕Nhấn để tạo Voice"
+    trigger = "➕Nhấn để tạo Voice"
 
-    # tạo room
-    if after.channel and after.channel.name == trigger_voice:
+    # tạo phòng
+    if after.channel and after.channel.name == trigger:
         vc = await guild.create_voice_channel(f"🎙️ {member.name}", category=after.channel.category)
         user_voice_channels[member.id] = vc.id
         await member.move_to(vc)
 
-    # auto delete khi rỗng
+        # gửi UI vào channel text bất kỳ (chọn channel hiện tại đầu tiên)
+        text_channel = discord.utils.get(guild.text_channels)
+        await create_ui(text_channel, member.id)
+
+    # xoá phòng khi rỗng
     if before.channel and before.channel.name.startswith("🎙️") and len(before.channel.members) == 0:
         cid = before.channel.id
         await before.channel.delete()
@@ -80,106 +143,12 @@ async def on_voice_state_update(member, before, after):
             if vid == cid:
                 del user_voice_channels[uid]
 
-# ====== UI MESSAGE ======
-async def send_voice_ui(channel):
-    msg = """
-🎛️ **VOICE CONTROL PANEL**
-
-!rename <tên> → Đổi tên phòng
-!private → Khoá phòng
-!unprivate → Mở phòng
-!add @user → Thêm người
-!block @user → Kick quyền người đó
-!delete → Xoá phòng
-
-⚠️ Chỉ dùng trong kênh này!
-"""
-    await channel.send(f"```\n{msg}\n```")
-
 # ====== RESET UI ======
 @bot.command()
 async def resetUIvoice(ctx):
     await ctx.message.delete()
-
-    await ctx.channel.purge(limit=20)
-    await send_voice_ui(ctx.channel)
-
-# ====== RENAME ======
-@bot.command()
-async def rename(ctx, *, name):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-    if vc:
-        await vc.edit(name=f"🎙️ {name}")
-
-    msg = await ctx.send("✅ Đã đổi tên")
-    await msg.delete(delay=5)
-
-# ====== PRIVATE ======
-@bot.command()
-async def private(ctx):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-
-    overwrites = {
-        ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-        ctx.author: discord.PermissionOverwrite(connect=True, speak=True)
-    }
-
-    await vc.edit(overwrites=overwrites)
-
-    msg = await ctx.send("🔒 Private ON")
-    await msg.delete(delay=5)
-
-# ====== UNPRIVATE ======
-@bot.command()
-async def unprivate(ctx):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-
-    overwrites = {
-        ctx.guild.default_role: discord.PermissionOverwrite(connect=True, speak=True)
-    }
-
-    await vc.edit(overwrites=overwrites)
-
-    msg = await ctx.send("🔓 Private OFF")
-    await msg.delete(delay=5)
-
-# ====== ADD ======
-@bot.command()
-async def add(ctx, member: discord.Member):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-    await vc.set_permissions(member, connect=True, speak=True)
-
-    msg = await ctx.send(f"✅ Added {member.mention}")
-    await msg.delete(delay=5)
-
-# ====== BLOCK ======
-@bot.command()
-async def block(ctx, member: discord.Member):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-    await vc.set_permissions(member, connect=False)
-
-    msg = await ctx.send(f"🚫 Blocked {member.mention}")
-    await msg.delete(delay=5)
-
-# ====== DELETE ======
-@bot.command()
-async def delete(ctx):
-    await ctx.message.delete()
-
-    vc = ctx.guild.get_channel(user_voice_channels.get(ctx.author.id))
-    if vc:
-        await vc.delete()
-        del user_voice_channels[ctx.author.id]
+    await ctx.channel.purge(limit=10)
+    await create_ui(ctx.channel, ctx.author.id)
 
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
