@@ -132,6 +132,12 @@ async def on_voice_state_update(member, before, after):
         voice_owners.pop(before.channel.id, None)
         await before.channel.delete()
 
+# ====== CHAT (ECHO) ======
+@bot.command()
+async def chat(ctx, *, message):
+    await ctx.message.delete()  # xoá tin nhắn chứa !chat
+    await ctx.send(message)     # gửi lại nội dung
+
 # ====== RESET UI ======
 @bot.command()
 async def resetUIvoice(ctx):
