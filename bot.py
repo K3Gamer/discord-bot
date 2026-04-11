@@ -9,6 +9,10 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ====== CONFIG ======
+VOICE_TRIGGER_NAME = "➕Nhấn để tạo Voice"
+CONTROL_CHANNEL_NAME = "⚙️cài-đặt-kênh-voice"
+
 # lưu owner của room
 voice_owners = {}
 
@@ -109,25 +113,35 @@ async def send_ui(channel):
 @bot.event
 async def on_ready():
     print(f"Bot online: {bot.user}")
-    bot.add_view(VoiceControlView())  # giữ button sau restart
+    bot.add_view(VoiceControlView())
 
 # ====== AUTO CREATE ======
 @bot.event
 async def on_voice_state_update(member, before, after):
     guild = member.guild
-    trigger = "➕Nhấn để tạo Voice"
 
-    # tạo phòng
-    if after.channel and after.channel.name == trigger:
-        vc = await guild.create_voice_channel(f"🎙️ {member.name}", category=after.channel.category)
+    # ====== CREATE ======
+    if after.channel and after.channel.name == VOICE_TRIGGER_NAME:
+        vc = await guild.create_voice_channel(
+            f"🎙️ {member.name}",
+            category=after.channel.category
+        )
+
         voice_owners[vc.id] = member.id
         await member.move_to(vc)
 
-        # gửi UI vào text channel đầu tiên
-        text_channel = guild.text_channels[0]
-        await send_ui(text_channel)
+        # tìm đúng kênh ⚙️
+        text_channel = discord.utils.get(
+            guild.text_channels,
+            name=CONTROL_CHANNEL_NAME
+        )
 
-    # auto delete
+        if text_channel:
+            await send_ui(text_channel)
+        else:
+            print("❌ Không tìm thấy kênh ⚙️cài-đặt-kênh-voice")
+
+    # ====== AUTO DELETE ======
     if before.channel and before.channel.name.startswith("🎙️") and len(before.channel.members) == 0:
         voice_owners.pop(before.channel.id, None)
         await before.channel.delete()
@@ -135,8 +149,8 @@ async def on_voice_state_update(member, before, after):
 # ====== CHAT (ECHO) ======
 @bot.command()
 async def chat(ctx, *, message):
-    await ctx.message.delete()  # xoá tin nhắn chứa !chat
-    await ctx.send(message)     # gửi lại nội dung
+    await ctx.message.delete()
+    await ctx.send(message)
 
 # ====== RESET UI ======
 @bot.command()
