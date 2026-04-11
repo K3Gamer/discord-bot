@@ -145,5 +145,17 @@ async def resetUIvoice(ctx):
     await ctx.channel.purge(limit=10)
     await send_ui(ctx.channel)
 
+# ====== WELCOME DM ======
+@bot.event
+async def on_member_join(member):
+    try:
+        await member.send(
+            f"🎉 Chào mừng {member.name} đến với nhóm **Bới Cái Đào**!\n\n"
+            "👉 Hãy đọc kênh 🧭điều-hướng-nhanh🧭 để biết cách sử dụng server nhé!\n"
+            "Chúc bạn có trải nghiệm vui vẻ 😄"
+        )
+    except:
+        print(f"Không thể gửi DM cho {member.name}")
+
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
