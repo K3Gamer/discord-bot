@@ -21,28 +21,38 @@ bad_words = [
 ]
 
 # ====== BÁO BÀI ======
-@bot.command()
+@bot.command(name="bb")
 async def baobai(ctx, *, noidung):
     await ctx.send(f"📢 **BÁO BÀI** từ {ctx.author.mention}:\n{noidung}")
+
+# ====== BÀI TẬP ======
+@bot.command(name="bt")
+async def baitap(ctx, *, noidung):
+    embed = discord.Embed(
+        title="📚 BÀI TẬP",
+        description=noidung,
+        color=0x00ffcc
+    )
+    embed.set_footer(text=f"Từ {ctx.author}")
+    await ctx.send(embed=embed)
 
 # ====== PRIVATE CHAT ======
 @bot.command()
 async def private(ctx):
     private_channels.add(ctx.channel.id)
-    await ctx.send("🔒 Đã bật chế độ private (tắt lọc từ bậy)")
+    await ctx.send("🔒 Đã bật private (tắt lọc từ bậy)")
 
 @bot.command()
 async def unprivate(ctx):
     private_channels.discard(ctx.channel.id)
-    await ctx.send("🔓 Đã tắt chế độ private")
+    await ctx.send("🔓 Đã tắt private")
 
-# ====== FILTER BAD WORD ======
+# ====== FILTER ======
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # bỏ qua kênh private
     if message.channel.id not in private_channels:
         content = message.content.lower()
         if any(word in content for word in bad_words):
@@ -69,7 +79,6 @@ class LimitModal(discord.ui.Modal, title="Giới hạn người"):
 
     async def on_submit(self, interaction: discord.Interaction):
         vc = interaction.user.voice.channel
-
         if voice_owners.get(vc.id) != interaction.user.id:
             return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
 
@@ -123,6 +132,55 @@ class VoiceControlView(discord.ui.View):
 
         await interaction.response.send_modal(LimitModal())
 
+    @discord.ui.button(label="👢 Kick", style=discord.ButtonStyle.secondary)
+    async def kick(self, interaction, _):
+        vc = self.get_vc(interaction)
+        if not vc or not self.is_owner(interaction, vc):
+            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
+
+        members = [m for m in vc.members if m != interaction.user]
+        if not members:
+            return await interaction.response.send_message("❌ Không có ai để kick", ephemeral=True)
+
+        await members[0].move_to(None)
+        await interaction.response.send_message(f"👢 Đã kick {members[0].name}", ephemeral=True)
+
+    @discord.ui.button(label="🔇 Mute", style=discord.ButtonStyle.secondary)
+    async def mute(self, interaction, _):
+        vc = self.get_vc(interaction)
+        if not vc or not self.is_owner(interaction, vc):
+            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
+
+        for m in vc.members:
+            if m != interaction.user:
+                await m.edit(mute=True)
+
+        await interaction.response.send_message("🔇 Đã mute", ephemeral=True)
+
+    @discord.ui.button(label="🔊 Unmute", style=discord.ButtonStyle.secondary)
+    async def unmute(self, interaction, _):
+        vc = self.get_vc(interaction)
+        if not vc or not self.is_owner(interaction, vc):
+            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
+
+        for m in vc.members:
+            await m.edit(mute=False)
+
+        await interaction.response.send_message("🔊 Đã unmute", ephemeral=True)
+
+    @discord.ui.button(label="👑 Transfer", style=discord.ButtonStyle.primary)
+    async def transfer(self, interaction, _):
+        vc = self.get_vc(interaction)
+        if not vc or not self.is_owner(interaction, vc):
+            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
+
+        members = [m for m in vc.members if m != interaction.user]
+        if not members:
+            return await interaction.response.send_message("❌ Không có ai", ephemeral=True)
+
+        voice_owners[vc.id] = members[0].id
+        await interaction.response.send_message(f"👑 Owner mới: {members[0].name}", ephemeral=True)
+
     @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction, _):
         vc = self.get_vc(interaction)
@@ -137,7 +195,7 @@ class VoiceControlView(discord.ui.View):
 async def send_ui(channel):
     embed = discord.Embed(
         title="🎛️ Voice Control Panel",
-        description="Điều khiển phòng voice",
+        description="Điều khiển phòng voice của bạn",
         color=0x00ffcc
     )
     await channel.send(embed=embed, view=VoiceControlView())
