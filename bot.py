@@ -28,14 +28,22 @@ async def baobai(ctx, *, noidung):
 # ====== BÀI TẬP ======
 @bot.command(name="bt")
 async def baitap(ctx, *, noidung):
+    import datetime
+
+    today = datetime.datetime.now().strftime("%d/%m/%Y")
+
+    # tự động xuống dòng theo dấu ;
+    lines = noidung.split(";")
+    formatted = "\n".join(line.strip() for line in lines)
+
     embed = discord.Embed(
-        title="📚 BÀI TẬP",
-        description=noidung,
+        title=f"📚 BÀI TẬP ({today})",
+        description=formatted,
         color=0x00ffcc
     )
     embed.set_footer(text=f"Từ {ctx.author}")
-    await ctx.send(embed=embed)
 
+    await ctx.send(embed=embed)
 # ====== PRIVATE CHAT ======
 @bot.command()
 async def private(ctx):
