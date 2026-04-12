@@ -13,8 +13,46 @@ VOICE_TRIGGER_NAME = "➕Nhấn để tạo Voice"
 CONTROL_CHANNEL_NAME = "⚙️cài-đặt-kênh-voice"
 
 voice_owners = {}
+private_channels = set()
 
-# ====== MODAL RENAME ======
+# ====== BAD WORD ======
+bad_words = [
+    "dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"
+]
+
+# ====== BÁO BÀI ======
+@bot.command()
+async def baobai(ctx, *, noidung):
+    await ctx.send(f"📢 **BÁO BÀI** từ {ctx.author.mention}:\n{noidung}")
+
+# ====== PRIVATE CHAT ======
+@bot.command()
+async def private(ctx):
+    private_channels.add(ctx.channel.id)
+    await ctx.send("🔒 Đã bật chế độ private (tắt lọc từ bậy)")
+
+@bot.command()
+async def unprivate(ctx):
+    private_channels.discard(ctx.channel.id)
+    await ctx.send("🔓 Đã tắt chế độ private")
+
+# ====== FILTER BAD WORD ======
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # bỏ qua kênh private
+    if message.channel.id not in private_channels:
+        content = message.content.lower()
+        if any(word in content for word in bad_words):
+            await message.delete()
+            await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
+            return
+
+    await bot.process_commands(message)
+
+# ====== MODAL ======
 class RenameModal(discord.ui.Modal, title="Đổi tên phòng"):
     new_name = discord.ui.TextInput(label="Tên mới", max_length=30)
 
@@ -26,9 +64,8 @@ class RenameModal(discord.ui.Modal, title="Đổi tên phòng"):
         await vc.edit(name=f"🎙️ {self.new_name.value}")
         await interaction.response.send_message("✅ Đã đổi tên", ephemeral=True)
 
-# ====== MODAL LIMIT ======
 class LimitModal(discord.ui.Modal, title="Giới hạn người"):
-    limit = discord.ui.TextInput(label="Nhập số (0 = không giới hạn)")
+    limit = discord.ui.TextInput(label="Nhập số")
 
     async def on_submit(self, interaction: discord.Interaction):
         vc = interaction.user.voice.channel
@@ -37,11 +74,10 @@ class LimitModal(discord.ui.Modal, title="Giới hạn người"):
             return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
 
         try:
-            limit = int(self.limit.value)
-            await vc.edit(user_limit=limit)
-            await interaction.response.send_message(f"👥 Limit = {limit}", ephemeral=True)
+            await vc.edit(user_limit=int(self.limit.value))
+            await interaction.response.send_message("✅ Đã set limit", ephemeral=True)
         except:
-            await interaction.response.send_message("❌ Nhập số hợp lệ", ephemeral=True)
+            await interaction.response.send_message("❌ Sai số", ephemeral=True)
 
 # ====== VIEW ======
 class VoiceControlView(discord.ui.View):
@@ -87,55 +123,6 @@ class VoiceControlView(discord.ui.View):
 
         await interaction.response.send_modal(LimitModal())
 
-    @discord.ui.button(label="👢 Kick", style=discord.ButtonStyle.secondary)
-    async def kick(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not vc or not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        members = [m for m in vc.members if m != interaction.user]
-        if not members:
-            return await interaction.response.send_message("❌ Không có ai để kick", ephemeral=True)
-
-        await members[0].move_to(None)
-        await interaction.response.send_message(f"👢 Đã kick {members[0].name}", ephemeral=True)
-
-    @discord.ui.button(label="🔇 Mute", style=discord.ButtonStyle.secondary)
-    async def mute(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not vc or not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        for m in vc.members:
-            if m != interaction.user:
-                await m.edit(mute=True)
-
-        await interaction.response.send_message("🔇 Đã mute", ephemeral=True)
-
-    @discord.ui.button(label="🔊 Unmute", style=discord.ButtonStyle.secondary)
-    async def unmute(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not vc or not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        for m in vc.members:
-            await m.edit(mute=False)
-
-        await interaction.response.send_message("🔊 Đã unmute", ephemeral=True)
-
-    @discord.ui.button(label="👑 Transfer", style=discord.ButtonStyle.primary)
-    async def transfer(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not vc or not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        members = [m for m in vc.members if m != interaction.user]
-        if not members:
-            return await interaction.response.send_message("❌ Không có ai", ephemeral=True)
-
-        voice_owners[vc.id] = members[0].id
-        await interaction.response.send_message(f"👑 Owner mới: {members[0].name}", ephemeral=True)
-
     @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction, _):
         vc = self.get_vc(interaction)
@@ -150,7 +137,7 @@ class VoiceControlView(discord.ui.View):
 async def send_ui(channel):
     embed = discord.Embed(
         title="🎛️ Voice Control Panel",
-        description="Điều khiển phòng voice của bạn",
+        description="Điều khiển phòng voice",
         color=0x00ffcc
     )
     await channel.send(embed=embed, view=VoiceControlView())
@@ -161,7 +148,7 @@ async def on_ready():
     print("Bot online:", bot.user)
     bot.add_view(VoiceControlView())
 
-# ====== VOICE EVENT ======
+# ====== VOICE ======
 @bot.event
 async def on_voice_state_update(member, before, after):
     guild = member.guild
