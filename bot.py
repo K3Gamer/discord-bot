@@ -38,13 +38,21 @@ async def on_message(message):
 # ====== PRIVATE ======
 @bot.command()
 async def private(ctx):
+    await ctx.message.delete()
     private_channels.add(ctx.channel.id)
     await ctx.send("🔒 Đã bật private")
 
 @bot.command()
 async def unprivate(ctx):
+    await ctx.message.delete()
     private_channels.discard(ctx.channel.id)
     await ctx.send("🔓 Đã tắt private")
+
+# ====== CHAT (ECHO) ======
+@bot.command()
+async def chat(ctx, *, message):
+    await ctx.message.delete()
+    await ctx.send(message)
 
 # ====== FORMAT ======
 def format_lines(text):
@@ -54,13 +62,14 @@ def format_lines(text):
 # ====== BÀI TẬP ======
 @bot.command(name="bt")
 async def baitap(ctx, date, so_mon: int, *, noidung):
+    await ctx.message.delete()
     try:
         lines = noidung.split(";")
 
         if len(lines) != so_mon:
             return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
 
-        formatted = "\n".join(line.strip() for line in lines)
+        formatted = format_lines(noidung)
 
         embed = discord.Embed(
             title=f"📚 BÀI TẬP ({date})",
@@ -72,18 +81,19 @@ async def baitap(ctx, date, so_mon: int, *, noidung):
         await ctx.send(embed=embed)
 
     except:
-        await ctx.send("❌ Sai cú pháp!\nVí dụ:\n!bt 13/4/2026 3 Toán: bài 1; Văn: bài 2; Anh: bài 3")
+        await ctx.send("❌ Sai cú pháp!\n!bt 13/4/2026 3 Toán: bài 1; Văn: bài 2; Anh: bài 3")
 
 # ====== BÁO BÀI ======
 @bot.command(name="bb")
 async def baobai(ctx, so_mon: int, *, noidung):
+    await ctx.message.delete()
     try:
         lines = noidung.split(";")
 
         if len(lines) != so_mon:
             return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
 
-        formatted = "\n".join(line.strip() for line in lines)
+        formatted = format_lines(noidung)
 
         embed = discord.Embed(
             title="📢 BÁO BÀI",
@@ -95,7 +105,7 @@ async def baobai(ctx, so_mon: int, *, noidung):
         await ctx.send(embed=embed)
 
     except:
-        await ctx.send("❌ Sai cú pháp!\nVí dụ:\n!bb 2 Toán: kiểm tra; Văn: nộp bài")
+        await ctx.send("❌ Sai cú pháp!\n!bb 2 Toán: kiểm tra; Văn: nộp bài")
 
 # ====== MODAL ======
 class RenameModal(discord.ui.Modal, title="Đổi tên phòng"):
