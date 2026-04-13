@@ -224,5 +224,17 @@ async def on_voice_state_update(member, before, after):
         voice_owners.pop(before.channel.id, None)
         await before.channel.delete()
 
+# ====== DM MEMBER ======
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def dm(ctx, member: discord.Member, *, message):
+    await ctx.message.delete()
+
+    try:
+        await member.send(message)
+        await ctx.send(f"✅ Đã gửi DM cho {member.mention}", delete_after=5)
+    except:
+        await ctx.send("❌ Không thể gửi tin nhắn (có thể user tắt DM)", delete_after=5)
+
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
