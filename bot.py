@@ -26,7 +26,11 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.id not in private_channels:
+    # ❗ KHÔNG lọc trong free-chat
+    if (
+        message.channel.id not in private_channels
+        and message.channel.name != "⛓️‍💥free-chat⛓️‍💥"
+    ):
         content = message.content.lower()
         if any(word in content for word in bad_words):
             await message.delete()
@@ -201,6 +205,18 @@ async def send_ui(channel):
 async def on_ready():
     print("Bot online:", bot.user)
     bot.add_view(VoiceControlView())
+
+# ====== WELCOME ======
+@bot.event
+async def on_member_join(member):
+    channel = discord.utils.get(member.guild.text_channels, name="👋・welcome")
+    
+    if channel:
+        await channel.send(
+            f"👋 Chào mừng {member.mention} đến với server!\n"
+            f"🎉 Chúc bạn có trải nghiệm vui vẻ tại **Bới Cái Đào**!\n"
+            f"📜 Nhớ đọc nội quy để tránh bị phạt nhé!"
+        )
 
 # ====== VOICE ======
 @bot.event
