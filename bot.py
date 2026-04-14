@@ -27,10 +27,7 @@ async def on_message(message):
         return
 
     # ❗ KHÔNG lọc trong free-chat
-    if (
-        message.channel.id not in private_channels
-        and message.channel.name != "⛓️‍💥free-chat⛓️‍💥"
-    ):
+    if message.channel.id not in private_channels:
         content = message.content.lower()
         if any(word in content for word in bad_words):
             await message.delete()
