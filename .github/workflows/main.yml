@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: '*/15 * * * *'
 
+# 🔥 QUAN TRỌNG: chống chạy nhiều bot
+concurrency:
+  group: discord-bot
+  cancel-in-progress: true
+
 jobs:
   bot:
     runs-on: ubuntu-latest
