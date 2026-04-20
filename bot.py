@@ -26,7 +26,6 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ❗ KHÔNG lọc trong free-chat
     if message.channel.id not in private_channels:
         content = message.content.lower()
         if any(word in content for word in bad_words):
@@ -49,7 +48,7 @@ async def unprivate(ctx):
     private_channels.discard(ctx.channel.id)
     await ctx.send("🔓 Đã tắt private")
 
-# ====== CHAT (ECHO) ======
+# ====== CHAT ======
 @bot.command()
 async def chat(ctx, *, message):
     await ctx.message.delete()
@@ -57,56 +56,72 @@ async def chat(ctx, *, message):
 
 # ====== FORMAT ======
 def format_lines(text):
-    lines = text.split(";")
-    return "\n".join(line.strip() for line in lines)
+    return "\n".join(line.strip() for line in text.split(";"))
 
 # ====== BÀI TẬP ======
 @bot.command(name="bt")
 async def baitap(ctx, date, so_mon: int, *, noidung):
     await ctx.message.delete()
-    try:
-        lines = noidung.split(";")
 
-        if len(lines) != so_mon:
-            return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
+    lines = noidung.split(";")
+    if len(lines) != so_mon:
+        return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
 
-        formatted = format_lines(noidung)
-
-        embed = discord.Embed(
-            title=f"📚 BÀI TẬP ({date})",
-            description=formatted,
-            color=0x00ffcc
-        )
-        embed.set_footer(text=f"Từ {ctx.author}")
-
-        await ctx.send(embed=embed)
-
-    except:
-        await ctx.send("❌ Sai cú pháp!\n!bt 13/4/2026 3 Toán: bài 1; Văn: bài 2; Anh: bài 3")
+    embed = discord.Embed(
+        title=f"📚 BÀI TẬP ({date})",
+        description=format_lines(noidung),
+        color=0x00ffcc
+    )
+    embed.set_footer(text=f"Từ {ctx.author}")
+    await ctx.send(embed=embed)
 
 # ====== BÁO BÀI ======
 @bot.command(name="bb")
 async def baobai(ctx, so_mon: int, *, noidung):
     await ctx.message.delete()
-    try:
-        lines = noidung.split(";")
 
-        if len(lines) != so_mon:
-            return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
+    lines = noidung.split(";")
+    if len(lines) != so_mon:
+        return await ctx.send(f"❌ Bạn ghi {so_mon} môn nhưng nhập {len(lines)} dòng!")
 
-        formatted = format_lines(noidung)
+    embed = discord.Embed(
+        title="📢 BÁO BÀI",
+        description=format_lines(noidung),
+        color=0xffcc00
+    )
+    embed.set_footer(text=f"Từ {ctx.author}")
+    await ctx.send(embed=embed)
 
-        embed = discord.Embed(
-            title="📢 BÁO BÀI",
-            description=formatted,
-            color=0xffcc00
-        )
-        embed.set_footer(text=f"Từ {ctx.author}")
+# ====== CLEAR ======
+@bot.command(name="clear")
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int = None):
+    await ctx.message.delete()
 
-        await ctx.send(embed=embed)
+    if amount is None:
+        deleted = await ctx.channel.purge(limit=1000)
+    else:
+        deleted = await ctx.channel.purge(limit=amount)
 
-    except:
-        await ctx.send("❌ Sai cú pháp!\n!bb 2 Toán: kiểm tra; Văn: nộp bài")
+    msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
+    await msg.delete(delay=3)
+
+# ====== CLEAR USER ======
+@bot.command(name="clearuser")
+@commands.has_permissions(manage_messages=True)
+async def clearuser(ctx, member: discord.Member, amount: int = None):
+    await ctx.message.delete()
+
+    def check(m):
+        return m.author == member
+
+    if amount is None:
+        deleted = await ctx.channel.purge(limit=1000, check=check)
+    else:
+        deleted = await ctx.channel.purge(limit=amount, check=check)
+
+    msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin của {member.mention}")
+    await msg.delete(delay=3)
 
 # ====== MODAL ======
 class RenameModal(discord.ui.Modal, title="Đổi tên phòng"):
@@ -134,7 +149,7 @@ class LimitModal(discord.ui.Modal, title="Giới hạn người"):
         except:
             await interaction.response.send_message("❌ Sai số", ephemeral=True)
 
-# ====== VIEW ======
+# ====== VIEW (FIXED) ======
 class VoiceControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -145,14 +160,14 @@ class VoiceControlView(discord.ui.View):
     def is_owner(self, interaction, vc):
         return vc and voice_owners.get(vc.id) == interaction.user.id
 
-    @discord.ui.button(label="✏️ Rename", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="✏️ Rename", style=discord.ButtonStyle.primary, custom_id="vc_rename")
     async def rename(self, interaction, _):
         vc = self.get_vc(interaction)
         if not self.is_owner(interaction, vc):
             return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
         await interaction.response.send_modal(RenameModal())
 
-    @discord.ui.button(label="🔒 Lock", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="🔒 Lock", style=discord.ButtonStyle.danger, custom_id="vc_lock")
     async def lock(self, interaction, _):
         vc = self.get_vc(interaction)
         if not self.is_owner(interaction, vc):
@@ -161,7 +176,7 @@ class VoiceControlView(discord.ui.View):
         await vc.set_permissions(interaction.guild.default_role, connect=False)
         await interaction.response.send_message("🔒 Đã khoá", ephemeral=True)
 
-    @discord.ui.button(label="🔓 Unlock", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🔓 Unlock", style=discord.ButtonStyle.success, custom_id="vc_unlock")
     async def unlock(self, interaction, _):
         vc = self.get_vc(interaction)
         if not self.is_owner(interaction, vc):
@@ -170,7 +185,7 @@ class VoiceControlView(discord.ui.View):
         await vc.set_permissions(interaction.guild.default_role, connect=True)
         await interaction.response.send_message("🔓 Đã mở", ephemeral=True)
 
-    @discord.ui.button(label="👥 Limit", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="👥 Limit", style=discord.ButtonStyle.secondary, custom_id="vc_limit")
     async def limit(self, interaction, _):
         vc = self.get_vc(interaction)
         if not self.is_owner(interaction, vc):
@@ -178,7 +193,7 @@ class VoiceControlView(discord.ui.View):
 
         await interaction.response.send_modal(LimitModal())
 
-    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, custom_id="vc_delete")
     async def delete(self, interaction, _):
         vc = self.get_vc(interaction)
         if not self.is_owner(interaction, vc):
@@ -207,13 +222,8 @@ async def on_ready():
 @bot.event
 async def on_member_join(member):
     channel = discord.utils.get(member.guild.text_channels, name="👋・welcome")
-    
     if channel:
-        await channel.send(
-            f"👋 Chào mừng {member.mention} đến với server!\n"
-            f"🎉 Chúc bạn có trải nghiệm vui vẻ tại **Bới Cái Đào**!\n"
-            f"📜 Nhớ đọc nội quy để tránh bị phạt nhé!"
-        )
+        await channel.send(f"👋 Chào mừng {member.mention}!")
 
 # ====== VOICE ======
 @bot.event
@@ -236,50 +246,6 @@ async def on_voice_state_update(member, before, after):
     if before.channel and before.channel.name.startswith("🎙️") and len(before.channel.members) == 0:
         voice_owners.pop(before.channel.id, None)
         await before.channel.delete()
-
-# ====== NR (DM MEMBER) ======
-@bot.command(name="NR")
-async def dm(ctx, member: discord.Member, *, message):
-    await ctx.message.delete()
-
-    try:
-        await member.send(message)
-        await ctx.send(f"📩 Đã gửi DM cho {member.mention}", delete_after=5)
-    except:
-        await ctx.send("❌ Không thể gửi tin nhắn", delete_after=5)
-
-# ====== CLEAR ======
-@bot.command(name="clear")
-@commands.has_permissions(manage_messages=True)
-async def clear(ctx, amount: int = None):
-    await ctx.message.delete()
-
-    if amount is None:
-        # Xoá càng nhiều càng tốt (giới hạn 1000 để tránh lag)
-        deleted = await ctx.channel.purge(limit=1000)
-        msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
-    else:
-        deleted = await ctx.channel.purge(limit=amount)
-        msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
-
-    await msg.delete(delay=3)
-
-# ====== CLEAR USER ======
-@bot.command(name="clearuser")
-@commands.has_permissions(manage_messages=True)
-async def clearuser(ctx, member: discord.Member, amount: int = None):
-    await ctx.message.delete()
-
-    def check(m):
-        return m.author == member
-
-    if amount is None:
-        deleted = await ctx.channel.purge(limit=1000, check=check)
-    else:
-        deleted = await ctx.channel.purge(limit=amount, check=check)
-
-    msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin của {member.mention}")
-    await msg.delete(delay=3)
 
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
