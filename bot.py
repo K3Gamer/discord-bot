@@ -248,5 +248,38 @@ async def dm(ctx, member: discord.Member, *, message):
     except:
         await ctx.send("❌ Không thể gửi tin nhắn", delete_after=5)
 
+# ====== CLEAR ======
+@bot.command(name="clear")
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int = None):
+    await ctx.message.delete()
+
+    if amount is None:
+        # Xoá càng nhiều càng tốt (giới hạn 1000 để tránh lag)
+        deleted = await ctx.channel.purge(limit=1000)
+        msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
+    else:
+        deleted = await ctx.channel.purge(limit=amount)
+        msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
+
+    await msg.delete(delay=3)
+
+# ====== CLEAR USER ======
+@bot.command(name="clearuser")
+@commands.has_permissions(manage_messages=True)
+async def clearuser(ctx, member: discord.Member, amount: int = None):
+    await ctx.message.delete()
+
+    def check(m):
+        return m.author == member
+
+    if amount is None:
+        deleted = await ctx.channel.purge(limit=1000, check=check)
+    else:
+        deleted = await ctx.channel.purge(limit=amount, check=check)
+
+    msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin của {member.mention}")
+    await msg.delete(delay=3)
+
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
