@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+import re
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -26,9 +27,17 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    # ✅ Bỏ qua command
+    if message.content.startswith("!"):
+        await bot.process_commands(message)
+        return
+
+    # ❗ KHÔNG lọc trong private
     if message.channel.id not in private_channels:
         content = message.content.lower()
-        if any(word in content for word in bad_words):
+
+        # ✅ Check theo từ (regex)
+        if any(re.search(rf"\b{re.escape(word)}\b", content) for word in bad_words):
             await message.delete()
             await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
             return
@@ -149,7 +158,7 @@ class LimitModal(discord.ui.Modal, title="Giới hạn người"):
         except:
             await interaction.response.send_message("❌ Sai số", ephemeral=True)
 
-# ====== VIEW (FIXED) ======
+# ====== VIEW ======
 class VoiceControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
