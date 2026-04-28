@@ -11,6 +11,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== CONFIG ======
 SUGGEST_CHANNEL_NAME = "📬hộp-thư-góp-ý📬"
+OWNER_ID = 1146701570688430201
 
 private_channels = set()
 
@@ -19,18 +20,27 @@ bad_words = [
     "dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"
 ]
 
-# ====== FILTER ======
+# ====== ON MESSAGE ======
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # Bỏ qua command
+    # ====== DM FORWARD ======
+    if isinstance(message.channel, discord.DMChannel):
+        try:
+            owner = await bot.fetch_user(OWNER_ID)
+            await owner.send(f"📩 {message.author}:\n{message.content}")
+        except:
+            pass
+        return
+
+    # ====== COMMAND ======
     if message.content.startswith("!"):
         await bot.process_commands(message)
         return
 
-    # Không lọc trong private
+    # ====== FILTER ======
     if message.channel.id not in private_channels:
         content = message.content.lower()
 
@@ -150,8 +160,8 @@ class SuggestModal(discord.ui.Modal, title="📬 Góp ý ẩn danh"):
         )
 
         embed.set_footer(text="Ẩn danh")
-
         await channel.send(embed=embed)
+
         await interaction.response.send_message("✅ Đã gửi góp ý!", ephemeral=True)
 
 # ====== VIEW ======
