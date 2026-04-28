@@ -29,25 +29,27 @@ async def on_message(message):
     if isinstance(message.channel, discord.DMChannel):
         try:
             owner = await bot.fetch_user(OWNER_ID)
-
-            dm_channel = owner.dm_channel
-            if dm_channel is None:
-                dm_channel = await owner.create_dm()
+            dm_channel = owner.dm_channel or await owner.create_dm()
 
             await dm_channel.send(
                 f"📩 {message.author} ({message.author.id}):\n{message.content}"
             )
-
         except Exception as e:
             print("DM lỗi:", e)
 
+        return  # DM không chạy command
+
+    # ====== BỎ QUA COMMAND (QUAN TRỌNG) ======
+    if message.content.startswith("!"):
+        await bot.process_commands(message)
         return
 
     # ====== FILTER ======
     if message.channel.id not in private_channels:
         content = message.content.lower()
 
-        if any(re.search(rf"\b{re.escape(word)}\b", content) for word in bad_words):
+        # tránh lỗi false positive
+        if any(f" {word} " in f" {content} " for word in bad_words):
             await message.delete()
             await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
             return
@@ -66,15 +68,10 @@ async def noilai(ctx, user_input, *, message):
     await ctx.message.delete()
 
     try:
-        # Lấy ID từ mention <@123> hoặc <@!123>
         user_id = int(user_input.replace("<@", "").replace(">", "").replace("!", ""))
-
         user = await bot.fetch_user(user_id)
 
-        dm_channel = user.dm_channel
-        if dm_channel is None:
-            dm_channel = await user.create_dm()
-
+        dm_channel = user.dm_channel or await user.create_dm()
         await dm_channel.send(message)
 
         msg = await ctx.send(f"📩 Đã gửi DM cho <@{user_id}>")
@@ -148,15 +145,11 @@ class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             owner = await bot.fetch_user(OWNER_ID)
-
-            dm_channel = owner.dm_channel
-            if dm_channel is None:
-                dm_channel = await owner.create_dm()
+            dm_channel = owner.dm_channel or await owner.create_dm()
 
             await dm_channel.send(
                 f"📬 GÓP Ý TỪ {interaction.user} ({interaction.user.id}):\n{self.content.value}"
             )
-
         except Exception as e:
             print("Lỗi góp ý:", e)
 
