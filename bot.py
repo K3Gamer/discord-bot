@@ -5,15 +5,13 @@ import re
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.voice_states = True
 intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-VOICE_TRIGGER_NAME = "➕Nhấn để tạo Voice"
-CONTROL_CHANNEL_NAME = "⚙️cài-đặt-kênh-voice"
+# ====== CONFIG ======
+SUGGEST_CHANNEL_NAME = "📬hộp-thư-góp-ý📬"
 
-voice_owners = {}
 private_channels = set()
 
 # ====== BAD WORD ======
@@ -27,16 +25,15 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ✅ Bỏ qua command
+    # Bỏ qua command
     if message.content.startswith("!"):
         await bot.process_commands(message)
         return
 
-    # ❗ KHÔNG lọc trong private
+    # Không lọc trong private
     if message.channel.id not in private_channels:
         content = message.content.lower()
 
-        # ✅ Check theo từ (regex)
         if any(re.search(rf"\b{re.escape(word)}\b", content) for word in bad_words):
             await message.delete()
             await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
@@ -132,100 +129,58 @@ async def clearuser(ctx, member: discord.Member, amount: int = None):
     msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin của {member.mention}")
     await msg.delete(delay=3)
 
-# ====== MODAL ======
-class RenameModal(discord.ui.Modal, title="Đổi tên phòng"):
-    new_name = discord.ui.TextInput(label="Tên mới", max_length=30)
+# ====== GÓP Ý MODAL ======
+class SuggestModal(discord.ui.Modal, title="📬 Góp ý ẩn danh"):
+    content = discord.ui.TextInput(
+        label="Nhập góp ý của bạn",
+        style=discord.TextStyle.paragraph,
+        max_length=500
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
-        vc = interaction.user.voice.channel
-        if not vc or voice_owners.get(vc.id) != interaction.user.id:
-            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+        channel = discord.utils.get(interaction.guild.text_channels, name=SUGGEST_CHANNEL_NAME)
 
-        await vc.edit(name=f"🎙️ {self.new_name.value}")
-        await interaction.response.send_message("✅ Đã đổi tên", ephemeral=True)
+        if not channel:
+            return await interaction.response.send_message("❌ Không tìm thấy kênh góp ý", ephemeral=True)
 
-class LimitModal(discord.ui.Modal, title="Giới hạn người"):
-    limit = discord.ui.TextInput(label="Nhập số")
+        embed = discord.Embed(
+            title="📬 Góp ý mới",
+            description=self.content.value,
+            color=0x00ffcc
+        )
 
-    async def on_submit(self, interaction: discord.Interaction):
-        vc = interaction.user.voice.channel
-        if not vc or voice_owners.get(vc.id) != interaction.user.id:
-            return await interaction.response.send_message("❌ Không phải phòng của bạn", ephemeral=True)
+        embed.set_footer(text="Ẩn danh")
 
-        try:
-            await vc.edit(user_limit=int(self.limit.value))
-            await interaction.response.send_message("✅ Đã set limit", ephemeral=True)
-        except:
-            await interaction.response.send_message("❌ Sai số", ephemeral=True)
+        await channel.send(embed=embed)
+        await interaction.response.send_message("✅ Đã gửi góp ý!", ephemeral=True)
 
 # ====== VIEW ======
-class VoiceControlView(discord.ui.View):
+class SuggestView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    def get_vc(self, interaction):
-        return interaction.user.voice.channel if interaction.user.voice else None
+    @discord.ui.button(label="📬 Gửi góp ý", style=discord.ButtonStyle.primary, custom_id="suggest_btn")
+    async def suggest(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SuggestModal())
 
-    def is_owner(self, interaction, vc):
-        return vc and voice_owners.get(vc.id) == interaction.user.id
+# ====== LỆNH PANEL ======
+@bot.command()
+async def goiy(ctx):
+    await ctx.message.delete()
 
-    @discord.ui.button(label="✏️ Rename", style=discord.ButtonStyle.primary, custom_id="vc_rename")
-    async def rename(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-        await interaction.response.send_modal(RenameModal())
-
-    @discord.ui.button(label="🔒 Lock", style=discord.ButtonStyle.danger, custom_id="vc_lock")
-    async def lock(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        await vc.set_permissions(interaction.guild.default_role, connect=False)
-        await interaction.response.send_message("🔒 Đã khoá", ephemeral=True)
-
-    @discord.ui.button(label="🔓 Unlock", style=discord.ButtonStyle.success, custom_id="vc_unlock")
-    async def unlock(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        await vc.set_permissions(interaction.guild.default_role, connect=True)
-        await interaction.response.send_message("🔓 Đã mở", ephemeral=True)
-
-    @discord.ui.button(label="👥 Limit", style=discord.ButtonStyle.secondary, custom_id="vc_limit")
-    async def limit(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        await interaction.response.send_modal(LimitModal())
-
-    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, custom_id="vc_delete")
-    async def delete(self, interaction, _):
-        vc = self.get_vc(interaction)
-        if not self.is_owner(interaction, vc):
-            return await interaction.response.send_message("❌ Không hợp lệ", ephemeral=True)
-
-        await vc.delete()
-        voice_owners.pop(vc.id, None)
-        await interaction.response.send_message("🗑️ Đã xoá", ephemeral=True)
-
-# ====== SEND UI ======
-async def send_ui(channel):
     embed = discord.Embed(
-        title="🎛️ Voice Control Panel",
-        description="Điều khiển phòng voice",
+        title="📬 Hộp thư góp ý",
+        description="Nhấn nút bên dưới để gửi góp ý (ẩn danh)",
         color=0x00ffcc
     )
-    await channel.send(embed=embed, view=VoiceControlView())
+
+    await ctx.send(embed=embed, view=SuggestView())
 
 # ====== READY ======
 @bot.event
 async def on_ready():
     print("Bot online:", bot.user)
-    bot.add_view(VoiceControlView())
+    bot.add_view(SuggestView())
 
 # ====== WELCOME ======
 @bot.event
@@ -233,28 +188,6 @@ async def on_member_join(member):
     channel = discord.utils.get(member.guild.text_channels, name="👋・welcome")
     if channel:
         await channel.send(f"👋 Chào mừng {member.mention}!")
-
-# ====== VOICE ======
-@bot.event
-async def on_voice_state_update(member, before, after):
-    guild = member.guild
-
-    if after.channel and after.channel.name == VOICE_TRIGGER_NAME:
-        vc = await guild.create_voice_channel(
-            f"🎙️ {member.name}",
-            category=after.channel.category
-        )
-
-        voice_owners[vc.id] = member.id
-        await member.move_to(vc)
-
-        text_channel = discord.utils.get(guild.text_channels, name=CONTROL_CHANNEL_NAME)
-        if text_channel:
-            await send_ui(text_channel)
-
-    if before.channel and before.channel.name.startswith("🎙️") and len(before.channel.members) == 0:
-        voice_owners.pop(before.channel.id, None)
-        await before.channel.delete()
 
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
