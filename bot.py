@@ -30,15 +30,19 @@ async def on_message(message):
     if isinstance(message.channel, discord.DMChannel):
         try:
             owner = await bot.fetch_user(OWNER_ID)
-            await owner.send(f"📩 {message.author}:\n{message.content}")
-        except:
-            pass
-        return
 
-    # ====== COMMAND ======
-    if message.content.startswith("!"):
-        await bot.process_commands(message)
-        return
+            dm_channel = owner.dm_channel
+            if dm_channel is None:
+                dm_channel = await owner.create_dm()
+
+            await dm_channel.send(
+                f"📩 {message.author} ({message.author.id}):\n{message.content}"
+            )
+
+        except Exception as e:
+            print("DM lỗi:", e)
+
+        return  # DM không xử lý command
 
     # ====== FILTER ======
     if message.channel.id not in private_channels:
@@ -49,20 +53,8 @@ async def on_message(message):
             await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
             return
 
+    # ====== QUAN TRỌNG ======
     await bot.process_commands(message)
-
-# ====== PRIVATE ======
-@bot.command()
-async def private(ctx):
-    await ctx.message.delete()
-    private_channels.add(ctx.channel.id)
-    await ctx.send("🔒 Đã bật private")
-
-@bot.command()
-async def unprivate(ctx):
-    await ctx.message.delete()
-    private_channels.discard(ctx.channel.id)
-    await ctx.send("🔓 Đã tắt private")
 
 # ====== CHAT ======
 @bot.command()
@@ -122,25 +114,8 @@ async def clear(ctx, amount: int = None):
     msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
     await msg.delete(delay=3)
 
-# ====== CLEAR USER ======
-@bot.command(name="clearuser")
-@commands.has_permissions(manage_messages=True)
-async def clearuser(ctx, member: discord.Member, amount: int = None):
-    await ctx.message.delete()
-
-    def check(m):
-        return m.author == member
-
-    if amount is None:
-        deleted = await ctx.channel.purge(limit=1000, check=check)
-    else:
-        deleted = await ctx.channel.purge(limit=amount, check=check)
-
-    msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin của {member.mention}")
-    await msg.delete(delay=3)
-
 # ====== GÓP Ý MODAL ======
-class SuggestModal(discord.ui.Modal, title="📬 Góp ý ẩn danh"):
+class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
     content = discord.ui.TextInput(
         label="Nhập góp ý của bạn",
         style=discord.TextStyle.paragraph,
@@ -148,19 +123,35 @@ class SuggestModal(discord.ui.Modal, title="📬 Góp ý ẩn danh"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        channel = discord.utils.get(interaction.guild.text_channels, name=SUGGEST_CHANNEL_NAME)
+        guild = interaction.guild
 
-        if not channel:
-            return await interaction.response.send_message("❌ Không tìm thấy kênh góp ý", ephemeral=True)
+        # ====== Gửi vào kênh ======
+        channel = discord.utils.get(guild.text_channels, name=SUGGEST_CHANNEL_NAME)
 
         embed = discord.Embed(
             title="📬 Góp ý mới",
             description=self.content.value,
             color=0x00ffcc
         )
+        embed.set_footer(text=f"Từ {interaction.user}")
 
-        embed.set_footer(text="Ẩn danh")
-        await channel.send(embed=embed)
+        if channel:
+            await channel.send(embed=embed)
+
+        # ====== Gửi DM cho OWNER ======
+        try:
+            owner = await bot.fetch_user(OWNER_ID)
+
+            dm_channel = owner.dm_channel
+            if dm_channel is None:
+                dm_channel = await owner.create_dm()
+
+            await dm_channel.send(
+                f"📬 GÓP Ý TỪ {interaction.user} ({interaction.user.id}):\n{self.content.value}"
+            )
+
+        except Exception as e:
+            print("Lỗi gửi DM góp ý:", e)
 
         await interaction.response.send_message("✅ Đã gửi góp ý!", ephemeral=True)
 
@@ -173,14 +164,14 @@ class SuggestView(discord.ui.View):
     async def suggest(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SuggestModal())
 
-# ====== LỆNH PANEL ======
-@bot.command()
-async def goiy(ctx):
+# ====== LỆNH GÓP Ý ======
+@bot.command(name="gopy")
+async def gopy(ctx):
     await ctx.message.delete()
 
     embed = discord.Embed(
         title="📬 Hộp thư góp ý",
-        description="Nhấn nút bên dưới để gửi góp ý (ẩn danh)",
+        description="Nhấn nút bên dưới để gửi góp ý",
         color=0x00ffcc
     )
 
@@ -191,13 +182,6 @@ async def goiy(ctx):
 async def on_ready():
     print("Bot online:", bot.user)
     bot.add_view(SuggestView())
-
-# ====== WELCOME ======
-@bot.event
-async def on_member_join(member):
-    channel = discord.utils.get(member.guild.text_channels, name="👋・welcome")
-    if channel:
-        await channel.send(f"👋 Chào mừng {member.mention}!")
 
 # ====== RUN ======
 bot.run(os.getenv("DISCORD_TOKEN"))
