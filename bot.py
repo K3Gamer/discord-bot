@@ -62,21 +62,27 @@ async def chat(ctx, *, message):
 
 # ====== NR (DM USER) ======
 @bot.command(name="nr")
-async def noilai(ctx, member: discord.Member, *, message):
+async def noilai(ctx, user_input, *, message):
     await ctx.message.delete()
 
     try:
-        dm_channel = member.dm_channel
+        # Lấy ID từ mention <@123> hoặc <@!123>
+        user_id = int(user_input.replace("<@", "").replace(">", "").replace("!", ""))
+
+        user = await bot.fetch_user(user_id)
+
+        dm_channel = user.dm_channel
         if dm_channel is None:
-            dm_channel = await member.create_dm()
+            dm_channel = await user.create_dm()
 
         await dm_channel.send(message)
 
-        msg = await ctx.send(f"📩 Đã gửi DM cho {member.mention}")
+        msg = await ctx.send(f"📩 Đã gửi DM cho <@{user_id}>")
         await msg.delete(delay=3)
 
-    except:
-        msg = await ctx.send(f"❌ Không thể gửi DM cho {member.mention}")
+    except Exception as e:
+        print("NR lỗi:", e)
+        msg = await ctx.send("❌ Sai cú pháp hoặc không gửi được DM")
         await msg.delete(delay=3)
 
 # ====== FORMAT ======
