@@ -60,11 +60,24 @@ async def chat(ctx, *, message):
     await ctx.message.delete()
     await ctx.send(message)
 
-# ====== NR (FIX) ======
+# ====== NR (DM USER) ======
 @bot.command(name="nr")
-async def noilai(ctx, *, message):
+async def noilai(ctx, member: discord.Member, *, message):
     await ctx.message.delete()
-    await ctx.send(message)
+
+    try:
+        dm_channel = member.dm_channel
+        if dm_channel is None:
+            dm_channel = await member.create_dm()
+
+        await dm_channel.send(message)
+
+        msg = await ctx.send(f"📩 Đã gửi DM cho {member.mention}")
+        await msg.delete(delay=3)
+
+    except:
+        msg = await ctx.send(f"❌ Không thể gửi DM cho {member.mention}")
+        await msg.delete(delay=3)
 
 # ====== FORMAT ======
 def format_lines(text):
