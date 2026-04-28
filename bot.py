@@ -10,7 +10,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== CONFIG ======
-SUGGEST_CHANNEL_NAME = "📬hộp-thư-góp-ý📬"
 OWNER_ID = 1146701570688430201
 
 private_channels = set()
@@ -42,7 +41,7 @@ async def on_message(message):
         except Exception as e:
             print("DM lỗi:", e)
 
-        return  # DM không xử lý command
+        return
 
     # ====== FILTER ======
     if message.channel.id not in private_channels:
@@ -53,12 +52,17 @@ async def on_message(message):
             await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
             return
 
-    # ====== QUAN TRỌNG ======
     await bot.process_commands(message)
 
 # ====== CHAT ======
 @bot.command()
 async def chat(ctx, *, message):
+    await ctx.message.delete()
+    await ctx.send(message)
+
+# ====== NR (FIX) ======
+@bot.command(name="nr")
+async def noilai(ctx, *, message):
     await ctx.message.delete()
     await ctx.send(message)
 
@@ -114,7 +118,7 @@ async def clear(ctx, amount: int = None):
     msg = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
     await msg.delete(delay=3)
 
-# ====== GÓP Ý MODAL ======
+# ====== GÓP Ý (CHỈ DM OWNER) ======
 class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
     content = discord.ui.TextInput(
         label="Nhập góp ý của bạn",
@@ -123,22 +127,6 @@ class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        guild = interaction.guild
-
-        # ====== Gửi vào kênh ======
-        channel = discord.utils.get(guild.text_channels, name=SUGGEST_CHANNEL_NAME)
-
-        embed = discord.Embed(
-            title="📬 Góp ý mới",
-            description=self.content.value,
-            color=0x00ffcc
-        )
-        embed.set_footer(text=f"Từ {interaction.user}")
-
-        if channel:
-            await channel.send(embed=embed)
-
-        # ====== Gửi DM cho OWNER ======
         try:
             owner = await bot.fetch_user(OWNER_ID)
 
@@ -151,7 +139,7 @@ class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
             )
 
         except Exception as e:
-            print("Lỗi gửi DM góp ý:", e)
+            print("Lỗi góp ý:", e)
 
         await interaction.response.send_message("✅ Đã gửi góp ý!", ephemeral=True)
 
