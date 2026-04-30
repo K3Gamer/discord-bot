@@ -75,8 +75,11 @@ async def super_timer(member):
         if data["remaining"] <= 0:
             role = get_role(member.guild, SUPER_ROLE_NAME)
 
-            if role and role in member.roles:
-                await member.remove_roles(role)
+            try:
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+            except:
+                pass
 
             del super_data[uid]
             save_data()
@@ -180,7 +183,47 @@ async def baobai(ctx, so_mon: int, *, noidung):
     )
     await ctx.send(embed=embed)
 
-# ====== SLASH SUPER ======
+# ====== GÓP Ý ======
+class SuggestModal(discord.ui.Modal, title="📬 Góp ý"):
+    content = discord.ui.TextInput(
+        label="Nhập góp ý của bạn",
+        style=discord.TextStyle.paragraph,
+        max_length=500
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            owner = await bot.fetch_user(OWNER_ID)
+            dm = owner.dm_channel or await owner.create_dm()
+            await dm.send(
+                f"📬 GÓP Ý TỪ {interaction.user} ({interaction.user.id}):\n{self.content.value}"
+            )
+        except Exception as e:
+            print("Lỗi góp ý:", e)
+
+        await interaction.response.send_message("✅ Đã gửi góp ý!", ephemeral=True)
+
+class SuggestView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="📬 Gửi góp ý", style=discord.ButtonStyle.primary, custom_id="suggest_btn")
+    async def suggest(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SuggestModal())
+
+@bot.command(name="gopy")
+async def gopy(ctx):
+    await ctx.message.delete()
+
+    embed = discord.Embed(
+        title="📬 Hộp thư góp ý",
+        description="Nhấn nút bên dưới để gửi góp ý",
+        color=0x00ffcc
+    )
+
+    await ctx.send(embed=embed, view=SuggestView())
+
+# ====== SUPER MEMBER ======
 @bot.tree.command(name="supermember")
 async def supermember(interaction: discord.Interaction, mode: str):
     member = interaction.user
@@ -260,6 +303,7 @@ async def on_ready():
                 super_tasks[uid] = bot.loop.create_task(super_timer(member))
                 break
 
+    bot.add_view(SuggestView())  # giữ button góp ý
     await bot.tree.sync()
 
 # ====== RUN ======
