@@ -17,9 +17,10 @@ private_channels = set()
 
 SUPER_ROLE_NAME = "🌟Super Member"
 HOCBA_ROLE_NAME = "📖Học Bá"
-SUPER_TIME = 3 * 24 * 60 * 60  # 3 ngày
+SUPER_TIME = 60  # 3 ngày
 
 super_data = {}
+super_tasks = {}
 
 # ====== BAD WORD ======
 bad_words = [
@@ -40,16 +41,29 @@ async def super_timer(member):
 
         data = super_data[user_id]
 
+        # pause
         if not data["active"]:
             await asyncio.sleep(1)
             continue
 
+        # hết thời gian
         if data["remaining"] <= 0:
             role = get_role(member.guild, SUPER_ROLE_NAME)
-            if role in member.roles:
-                await member.remove_roles(role)
+
+            try:
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+            except Exception as e:
+                print("Lỗi remove role:", e)
 
             del super_data[user_id]
+            super_tasks.pop(user_id, None)
+
+            try:
+                await member.send("⏰ Super Member của bạn đã hết hạn!")
+            except:
+                pass
+
             return
 
         await asyncio.sleep(1)
@@ -61,7 +75,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ====== DM FORWARD ======
+    # DM forward
     if isinstance(message.channel, discord.DMChannel):
         try:
             owner = await bot.fetch_user(OWNER_ID)
@@ -75,12 +89,12 @@ async def on_message(message):
 
         return
 
-    # ====== COMMAND ======
+    # command !
     if message.content.startswith("!"):
         await bot.process_commands(message)
         return
 
-    # ====== FILTER ======
+    # filter
     if message.channel.id not in private_channels:
         content = message.content.lower()
 
@@ -209,7 +223,7 @@ async def gopy(ctx):
 
     await ctx.send(embed=embed, view=SuggestView())
 
-# ====== SLASH COMMAND SUPER ======
+# ====== SLASH COMMAND ======
 @bot.tree.command(name="supermember", description="Bật/tắt Super Member")
 @app_commands.describe(mode="on hoặc off")
 async def supermember(interaction: discord.Interaction, mode: str):
@@ -232,6 +246,7 @@ async def supermember(interaction: discord.Interaction, mode: str):
 
     data = super_data[user_id]
 
+    # ===== ON =====
     if mode.lower() == "on":
         if data["remaining"] <= 0:
             return await interaction.response.send_message("❌ Hết thời gian!", ephemeral=True)
@@ -244,16 +259,27 @@ async def supermember(interaction: discord.Interaction, mode: str):
         if super_role not in member.roles:
             await member.add_roles(super_role)
 
-        bot.loop.create_task(super_timer(member))
+        # chống spam task
+        if user_id not in super_tasks:
+            task = bot.loop.create_task(super_timer(member))
+            super_tasks[user_id] = task
 
         await interaction.response.send_message(
             f"✅ Bật thành công!\n⏳ Còn {data['remaining']} giây",
             ephemeral=True
         )
 
+    # ===== OFF =====
     elif mode.lower() == "off":
         data["active"] = False
-        await interaction.response.send_message("⏸️ Đã tạm dừng", ephemeral=True)
+
+        if super_role in member.roles:
+            await member.remove_roles(super_role)
+
+        await interaction.response.send_message(
+            "⏸️ Đã tạm dừng và gỡ Super Member",
+            ephemeral=True
+        )
 
     else:
         await interaction.response.send_message("❌ /supermember on hoặc off", ephemeral=True)
