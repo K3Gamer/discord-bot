@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 import asyncio
 import json
@@ -11,7 +12,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================= CONFIG =================
+# ====== CONFIG ======
 OWNER_ID = 1146701570688430201
 
 SUPER_ROLE_NAME = "🌟Super Member"
@@ -27,38 +28,36 @@ super_data = {}
 super_tasks = {}
 birthday_data = {}
 
+# ====== BAD WORD ======
 bad_words = ["dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"]
 
-# ================= LOAD / SAVE =================
-
-def load_json(file, default):
-    if os.path.exists(file):
-        try:
-            with open(file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return default
-    return default
-
-def save_json(file, data):
-    with open(file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+# =========================
+# LOAD / SAVE
+# =========================
 
 def load_data():
     global super_data
-    super_data = load_json(DATA_FILE, {})
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            super_data = json.load(f)
 
 def save_data():
-    save_json(DATA_FILE, super_data)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(super_data, f, indent=4)
 
 def load_birthday():
     global birthday_data
-    birthday_data = load_json(BIRTHDAY_FILE, {})
+    if os.path.exists(BIRTHDAY_FILE):
+        with open(BIRTHDAY_FILE, "r", encoding="utf-8") as f:
+            birthday_data = json.load(f)
 
 def save_birthday():
-    save_json(BIRTHDAY_FILE, birthday_data)
+    with open(BIRTHDAY_FILE, "w", encoding="utf-8") as f:
+        json.dump(birthday_data, f, indent=4)
 
-# ================= UTIL =================
+# =========================
+# ROLE
+# =========================
 
 def get_role(guild, name):
     return discord.utils.get(guild.roles, name=name)
@@ -70,26 +69,40 @@ def format_time(sec):
     s = sec % 60
     return f"{d}d {h}h {m}m {s}s"
 
-# ================= CHAT FILTER =================
+def format_lines(text):
+    return "\n".join(line.strip() for line in text.split(";"))
+
+# =========================
+# CHAT FILTER + DM FORWARD
+# =========================
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    content = message.content.lower()
-
-    if any(w in content for w in bad_words):
+    # DM forward
+    if isinstance(message.channel, discord.DMChannel):
         try:
-            await message.delete()
+            owner = await bot.fetch_user(OWNER_ID)
+            dm = owner.dm_channel or await owner.create_dm()
+            await dm.send(f"📩 {message.author}:\n{message.content}")
         except:
             pass
+        return
+
+    # filter
+    content = message.content.lower()
+    if any(f" {w} " in f" {content} " for w in bad_words):
+        await message.delete()
         await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
         return
 
     await bot.process_commands(message)
 
-# ================= BASIC COMMANDS =================
+# =========================
+# BASIC COMMANDS
+# =========================
 
 @bot.command()
 async def chat(ctx, *, msg):
@@ -103,6 +116,17 @@ async def clear(ctx, amount: int = 10):
     m = await ctx.send(f"🧹 Đã xoá {len(deleted)} tin nhắn")
     await m.delete(delay=3)
 
+@bot.command(name="nr")
+async def noilai(ctx, user_input, *, message):
+    await ctx.message.delete()
+    try:
+        uid = int(user_input.replace("<@", "").replace(">", "").replace("!", ""))
+        user = await bot.fetch_user(uid)
+        dm = user.dm_channel or await user.create_dm()
+        await dm.send(message)
+    except:
+        await ctx.send("❌ Lỗi")
+
 @bot.command(name="bt")
 async def baitap(ctx, date, so_mon: int, *, noidung):
     await ctx.message.delete()
@@ -113,7 +137,7 @@ async def baitap(ctx, date, so_mon: int, *, noidung):
 
     embed = discord.Embed(
         title=f"📚 BÀI TẬP ({date})",
-        description="\n".join(lines),
+        description=format_lines(noidung),
         color=0x00ffcc
     )
     await ctx.send(embed=embed)
@@ -128,26 +152,30 @@ async def baobai(ctx, so_mon: int, *, noidung):
 
     embed = discord.Embed(
         title="📢 BÁO BÀI",
-        description="\n".join(lines),
+        description=format_lines(noidung),
         color=0xffcc00
     )
     await ctx.send(embed=embed)
 
-# ================= SUPER SYSTEM =================
+# =========================
+# SUPER SYSTEM
+# =========================
 
 async def super_timer(member):
     uid = str(member.id)
 
-    while uid in super_data:
+    while True:
+        if uid not in super_data:
+            return
+
         data = super_data[uid]
 
-        if not data.get("active"):
-            await asyncio.sleep(5)
+        if not data["active"]:
+            await asyncio.sleep(1)
             continue
 
         now = int(time.time())
         elapsed = now - data["last_time"]
-
         data["last_time"] = now
         data["remaining"] -= elapsed
 
@@ -162,12 +190,20 @@ async def super_timer(member):
 
             del super_data[uid]
             save_data()
+            super_tasks.pop(uid, None)
+
+            try:
+                await member.send("⏰ Super Member đã hết hạn!")
+            except:
+                pass
             return
 
         save_data()
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)
 
-# ================= BIRTHDAY SYSTEM =================
+# =========================
+# BIRTHDAY SYSTEM
+# =========================
 
 async def birthday_checker():
     await bot.wait_until_ready()
@@ -183,7 +219,7 @@ async def birthday_checker():
             if not channel:
                 continue
 
-            role = get_role(guild, BIRTHDAY_ROLE_NAME)
+            role = discord.utils.get(guild.roles, name=BIRTHDAY_ROLE_NAME)
             if not role:
                 role = await guild.create_role(name=BIRTHDAY_ROLE_NAME)
 
@@ -204,23 +240,21 @@ async def birthday_checker():
 
                     try:
                         await member.add_roles(role)
-                        await member.edit(nick=f"🎉 {member.name}")
                     except:
                         pass
 
                     embed = discord.Embed(
                         title="🎉 CHÚC MỪNG SINH NHẬT 🎂",
-                        description=f"Hôm nay là sinh nhật thứ **{age}** của **{member.name}** 🎊",
+                        description=f"Hôm nay là ngày sinh nhật thứ **{age}** của **{member.name}** 🎊",
                         color=0xffcc00
                     )
 
-                    avatar = member.display_avatar.url
+                    avatar = member.avatar.url if member.avatar else member.default_avatar.url
                     embed.set_thumbnail(url=avatar)
 
                     await channel.send(content=member.mention, embed=embed)
 
-                    # +3 SUPER
-                    uid = str(member.id)
+                    # +3 days super
                     if uid not in super_data:
                         super_data[uid] = {
                             "remaining": 3 * 86400,
@@ -230,14 +264,21 @@ async def birthday_checker():
                     else:
                         super_data[uid]["remaining"] += 3 * 86400
 
-                    birthday_data[uid]["last_year"] = year
-
                     save_data()
+
+                    birthday_data[uid]["last_year"] = year
                     save_birthday()
 
-        await asyncio.sleep(86400)
+                    try:
+                        await member.send("🎁 Bạn được tặng +3 ngày Super Member!")
+                    except:
+                        pass
 
-# ================= SET BIRTHDAY =================
+        await asyncio.sleep(60 * 60 * 24)
+
+# =========================
+# SLASH: SET BIRTHDAY (OWNER)
+# =========================
 
 @bot.tree.command(name="setbirthday")
 async def setbirthday(interaction: discord.Interaction, member: discord.Member, date: str):
@@ -246,9 +287,9 @@ async def setbirthday(interaction: discord.Interaction, member: discord.Member, 
         return await interaction.response.send_message("❌ Không có quyền", ephemeral=True)
 
     try:
-        day = int(date[:2])
+        day = int(date[0:2])
         month = int(date[2:4])
-        year = int(date[4:])
+        year = int(date[4:8])
     except:
         return await interaction.response.send_message("❌ Sai format DDMMYYYY", ephemeral=True)
 
@@ -263,7 +304,9 @@ async def setbirthday(interaction: discord.Interaction, member: discord.Member, 
 
     await interaction.response.send_message("🎂 Đã set sinh nhật", ephemeral=True)
 
-# ================= SUPER COMMAND =================
+# =========================
+# SUPER COMMAND
+# =========================
 
 @bot.tree.command(name="supermember")
 async def supermember(interaction: discord.Interaction, mode: str):
@@ -302,7 +345,7 @@ async def supermember(interaction: discord.Interaction, mode: str):
 
         await interaction.response.send_message("✅ ON", ephemeral=True)
 
-    else:
+    elif mode == "off":
         data["active"] = False
         save_data()
 
@@ -311,7 +354,83 @@ async def supermember(interaction: discord.Interaction, mode: str):
 
         await interaction.response.send_message("⏸️ OFF", ephemeral=True)
 
-# ================= READY =================
+@bot.tree.command(name="donsinhnhat")
+async def donsinhnhat(interaction: discord.Interaction):
+
+    guild = interaction.guild
+    today_day = int(time.strftime("%d"))
+    today_month = int(time.strftime("%m"))
+    year = int(time.strftime("%Y"))
+
+    channel = discord.utils.get(guild.text_channels, name="🗨️nhắn-tin💬")
+
+    if not channel:
+        return await interaction.response.send_message("❌ Không tìm thấy kênh 🗨️nhắn-tin💬", ephemeral=True)
+
+    role = discord.utils.get(guild.roles, name="🎉Birthday")
+    if not role:
+        role = await guild.create_role(name="🎉Birthday")
+
+    found = False
+
+    for member in guild.members:
+        uid = str(member.id)
+
+        if uid not in birthday_data:
+            continue
+
+        data = birthday_data[uid]
+
+        if data["day"] == today_day and data["month"] == today_month:
+
+            # tránh spam lại trong cùng năm
+            if data.get("last_year") == year:
+                continue
+
+            found = True
+            age = year - data["year"]
+
+            # add role
+            try:
+                await member.add_roles(role)
+            except:
+                pass
+
+            # embed
+            embed = discord.Embed(
+                title="🎉 CHÚC MỪNG SINH NHẬT 🎂",
+                description=f"Hôm nay là ngày sinh nhật thứ **{age}** của **{member.name}** 🎊",
+                color=0xffcc00
+            )
+
+            avatar = member.avatar.url if member.avatar else member.default_avatar.url
+            embed.set_thumbnail(url=avatar)
+
+            await channel.send(content=member.mention, embed=embed)
+
+            # +3 ngày super
+            if uid not in super_data:
+                super_data[uid] = {
+                    "remaining": 3 * 86400,
+                    "active": False,
+                    "last_time": int(time.time())
+                }
+            else:
+                super_data[uid]["remaining"] += 3 * 86400
+
+            birthday_data[uid]["last_year"] = year
+
+            save_data()
+            save_birthday()
+
+    await interaction.response.send_message(
+        "🎂 Đã chạy kiểm tra sinh nhật thủ công!" if found else "😴 Hôm nay không có sinh nhật nào",
+        ephemeral=True
+    )
+
+# =========================
+# READY
+# =========================
 
 @bot.event
 async def on_ready():
@@ -322,8 +441,19 @@ async def on_ready():
 
     bot.loop.create_task(birthday_checker())
 
+    for uid in list(super_data.keys()):
+        for guild in bot.guilds:
+            member = guild.get_member(int(uid))
+            if member:
+                super_tasks[uid] = bot.loop.create_task(super_timer(member))
+                break
+
     await bot.tree.sync()
 
-# ================= RUN =================
+
+
+# =========================
+# RUN
+# =========================
 
 bot.run(os.getenv("DISCORD_TOKEN"))
