@@ -354,6 +354,80 @@ async def supermember(interaction: discord.Interaction, mode: str):
 
         await interaction.response.send_message("⏸️ OFF", ephemeral=True)
 
+@bot.tree.command(name="donsinhnhat")
+async def donsinhnhat(interaction: discord.Interaction):
+
+    guild = interaction.guild
+    today_day = int(time.strftime("%d"))
+    today_month = int(time.strftime("%m"))
+    year = int(time.strftime("%Y"))
+
+    channel = discord.utils.get(guild.text_channels, name="🗨️nhắn-tin💬")
+
+    if not channel:
+        return await interaction.response.send_message("❌ Không tìm thấy kênh 🗨️nhắn-tin💬", ephemeral=True)
+
+    role = discord.utils.get(guild.roles, name="🎉Birthday")
+    if not role:
+        role = await guild.create_role(name="🎉Birthday")
+
+    found = False
+
+    for member in guild.members:
+        uid = str(member.id)
+
+        if uid not in birthday_data:
+            continue
+
+        data = birthday_data[uid]
+
+        if data["day"] == today_day and data["month"] == today_month:
+
+            # tránh spam lại trong cùng năm
+            if data.get("last_year") == year:
+                continue
+
+            found = True
+            age = year - data["year"]
+
+            # add role
+            try:
+                await member.add_roles(role)
+            except:
+                pass
+
+            # embed
+            embed = discord.Embed(
+                title="🎉 CHÚC MỪNG SINH NHẬT 🎂",
+                description=f"Hôm nay là ngày sinh nhật thứ **{age}** của **{member.name}** 🎊",
+                color=0xffcc00
+            )
+
+            avatar = member.avatar.url if member.avatar else member.default_avatar.url
+            embed.set_thumbnail(url=avatar)
+
+            await channel.send(content=member.mention, embed=embed)
+
+            # +3 ngày super
+            if uid not in super_data:
+                super_data[uid] = {
+                    "remaining": 3 * 86400,
+                    "active": False,
+                    "last_time": int(time.time())
+                }
+            else:
+                super_data[uid]["remaining"] += 3 * 86400
+
+            birthday_data[uid]["last_year"] = year
+
+            save_data()
+            save_birthday()
+
+    await interaction.response.send_message(
+        "🎂 Đã chạy kiểm tra sinh nhật thủ công!" if found else "😴 Hôm nay không có sinh nhật nào",
+        ephemeral=True
+    )
+
 # =========================
 # READY
 # =========================
@@ -375,6 +449,8 @@ async def on_ready():
                 break
 
     await bot.tree.sync()
+
+
 
 # =========================
 # RUN
