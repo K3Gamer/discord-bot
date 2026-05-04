@@ -221,6 +221,35 @@ async def donsinhnhat(interaction: discord.Interaction):
         "🎂 Đã chạy!" if found else "😴 Không có ai",
         ephemeral=True
     )
+@bot.command(name="antiamongus")
+async def antiamongus(ctx):
+    guild = ctx.guild
+
+    member = guild.get_member(TARGET_USER_ID)
+    if not member:
+        return await ctx.send("❌ Không tìm thấy user")
+
+    bot_role = get_role(guild, BOT_ROLE_NAME)
+    restricted_role = get_role(guild, RESTRICTED_ROLE_NAME)
+
+    # tạo role nếu chưa có
+    if not restricted_role:
+        restricted_role = await guild.create_role(name=RESTRICTED_ROLE_NAME)
+
+    try:
+        # ❌ remove 🧠Bot
+        if bot_role and bot_role in member.roles:
+            await member.remove_roles(bot_role)
+
+        # 🚫 add Restricted
+        if restricted_role not in member.roles:
+            await member.add_roles(restricted_role)
+
+        await ctx.send(f"🚫 {member.mention} đã bị Restricted bởi lệnh!")
+
+    except Exception as e:
+        print("ANTI AMONGUS ERROR:", e)
+        await ctx.send("❌ Lỗi khi xử lý")
 
 # =========================
 # READY
