@@ -18,15 +18,29 @@ OWNER_ID = 1146701570688430201
 SUPER_ROLE_NAME = "🌟Super Member"
 HOCBA_ROLE_NAME = "📖Học Bá"
 BIRTHDAY_ROLE_NAME = "🎉Birthday"
+RESTRICTED_ROLE_NAME = "🚫Restricted"
 
 SUPER_TIME = 3 * 24 * 60 * 60
 
 DATA_FILE = "super_data.json"
 BIRTHDAY_FILE = "birthday.json"
+AIHOI_FILE = "aihoi.json"
+
+TARGET_USER_ID = 1499725865511030895
+
+trigger_words = [
+    "ai hỏi",
+    "ai hoi",
+    "who asked",
+    "ko ai hỏi",
+    "không ai hỏi"
+]
 
 super_data = {}
 super_tasks = {}
 birthday_data = {}
+aihoi_settings = {}
+restricted_cooldown = {}
 
 # ====== BAD WORD ======
 bad_words = ["dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"]
@@ -35,25 +49,36 @@ bad_words = ["dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"]
 # LOAD / SAVE
 # =========================
 
+def load_json(file):
+    if os.path.exists(file):
+        with open(file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_json(file, data):
+    with open(file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
 def load_data():
     global super_data
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            super_data = json.load(f)
+    super_data = load_json(DATA_FILE)
 
 def save_data():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(super_data, f, indent=4)
+    save_json(DATA_FILE, super_data)
 
 def load_birthday():
     global birthday_data
-    if os.path.exists(BIRTHDAY_FILE):
-        with open(BIRTHDAY_FILE, "r", encoding="utf-8") as f:
-            birthday_data = json.load(f)
+    birthday_data = load_json(BIRTHDAY_FILE)
 
 def save_birthday():
-    with open(BIRTHDAY_FILE, "w", encoding="utf-8") as f:
-        json.dump(birthday_data, f, indent=4)
+    save_json(BIRTHDAY_FILE, birthday_data)
+
+def load_aihoi():
+    global aihoi_settings
+    aihoi_settings = load_json(AIHOI_FILE)
+
+def save_aihoi():
+    save_json(AIHOI_FILE, aihoi_settings)
 
 # =========================
 # ROLE
@@ -62,18 +87,11 @@ def save_birthday():
 def get_role(guild, name):
     return discord.utils.get(guild.roles, name=name)
 
-def format_time(sec):
-    d = sec // 86400
-    h = (sec % 86400) // 3600
-    m = (sec % 3600) // 60
-    s = sec % 60
-    return f"{d}d {h}h {m}m {s}s"
-
 def format_lines(text):
     return "\n".join(line.strip() for line in text.split(";"))
 
 # =========================
-# CHAT FILTER + DM FORWARD
+# CHAT FILTER + AIHOI + DM
 # =========================
 
 @bot.event
@@ -91,12 +109,46 @@ async def on_message(message):
             pass
         return
 
-    # filter
     content = message.content.lower()
+
+    # ===== FILTER =====
     if any(f" {w} " in f" {content} " for w in bad_words):
         await message.delete()
         await message.channel.send(f"⚠️ {message.author.mention} nói bậy!")
         return
+
+    # ===== AI HỎI SYSTEM =====
+    guild_id = str(message.guild.id)
+    enabled = aihoi_settings.get(guild_id, False)
+
+    if enabled and message.author.id == TARGET_USER_ID:
+        if any(word in content for word in trigger_words):
+
+            now = time.time()
+            if message.author.id in restricted_cooldown:
+                if now - restricted_cooldown[message.author.id] < 5:
+                    return
+
+            restricted_cooldown[message.author.id] = now
+
+            role = get_role(message.guild, RESTRICTED_ROLE_NAME)
+
+            if not role:
+                role = await message.guild.create_role(name=RESTRICTED_ROLE_NAME)
+
+            try:
+                await message.author.add_roles(role)
+            except:
+                pass
+
+            await message.channel.send(f"🚫 {message.author.mention} bị Restricted 2 giây!")
+
+            await asyncio.sleep(2)
+
+            try:
+                await message.author.remove_roles(role)
+            except:
+                pass
 
     await bot.process_commands(message)
 
@@ -277,7 +329,7 @@ async def birthday_checker():
         await asyncio.sleep(60 * 60 * 24)
 
 # =========================
-# SLASH: SET BIRTHDAY (OWNER)
+# SLASH COMMANDS
 # =========================
 
 @bot.tree.command(name="setbirthday")
@@ -304,129 +356,28 @@ async def setbirthday(interaction: discord.Interaction, member: discord.Member, 
 
     await interaction.response.send_message("🎂 Đã set sinh nhật", ephemeral=True)
 
-# =========================
-# SUPER COMMAND
-# =========================
+# ===== AIHOI COMMAND =====
 
-@bot.tree.command(name="supermember")
-async def supermember(interaction: discord.Interaction, mode: str):
+@bot.tree.command(name="allowaihoi")
+async def allowaihoi(interaction: discord.Interaction, mode: str):
 
-    member = interaction.user
-    guild = interaction.guild
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ Không có quyền", ephemeral=True)
 
-    hocba = get_role(guild, HOCBA_ROLE_NAME)
-    super_role = get_role(guild, SUPER_ROLE_NAME)
+    guild_id = str(interaction.guild.id)
 
-    if hocba not in member.roles:
-        return await interaction.response.send_message("❌ Không phải Học Bá", ephemeral=True)
+    if mode.lower() == "on":
+        aihoi_settings[guild_id] = True
+        save_aihoi()
+        await interaction.response.send_message("✅ Đã bật AI HỎI", ephemeral=True)
 
-    uid = str(member.id)
+    elif mode.lower() == "off":
+        aihoi_settings[guild_id] = False
+        save_aihoi()
+        await interaction.response.send_message("⛔ Đã tắt AI HỎI", ephemeral=True)
 
-    if uid not in super_data:
-        super_data[uid] = {
-            "remaining": SUPER_TIME,
-            "active": False,
-            "last_time": int(time.time())
-        }
-
-    data = super_data[uid]
-
-    if mode == "on":
-        data["active"] = True
-        data["last_time"] = int(time.time())
-
-        if super_role not in member.roles:
-            await member.add_roles(super_role)
-
-        if uid not in super_tasks:
-            super_tasks[uid] = bot.loop.create_task(super_timer(member))
-
-        save_data()
-
-        await interaction.response.send_message("✅ ON", ephemeral=True)
-
-    elif mode == "off":
-        data["active"] = False
-        save_data()
-
-        if super_role in member.roles:
-            await member.remove_roles(super_role)
-
-        await interaction.response.send_message("⏸️ OFF", ephemeral=True)
-
-@bot.tree.command(name="donsinhnhat")
-async def donsinhnhat(interaction: discord.Interaction):
-
-    guild = interaction.guild
-    today_day = int(time.strftime("%d"))
-    today_month = int(time.strftime("%m"))
-    year = int(time.strftime("%Y"))
-
-    channel = discord.utils.get(guild.text_channels, name="🗨️nhắn-tin💬")
-
-    if not channel:
-        return await interaction.response.send_message("❌ Không tìm thấy kênh 🗨️nhắn-tin💬", ephemeral=True)
-
-    role = discord.utils.get(guild.roles, name="🎉Birthday")
-    if not role:
-        role = await guild.create_role(name="🎉Birthday")
-
-    found = False
-
-    for member in guild.members:
-        uid = str(member.id)
-
-        if uid not in birthday_data:
-            continue
-
-        data = birthday_data[uid]
-
-        if data["day"] == today_day and data["month"] == today_month:
-
-            # tránh spam lại trong cùng năm
-            if data.get("last_year") == year:
-                continue
-
-            found = True
-            age = year - data["year"]
-
-            # add role
-            try:
-                await member.add_roles(role)
-            except:
-                pass
-
-            # embed
-            embed = discord.Embed(
-                title="🎉 CHÚC MỪNG SINH NHẬT 🎂",
-                description=f"Hôm nay là ngày sinh nhật thứ **{age}** của **{member.name}** 🎊",
-                color=0xffcc00
-            )
-
-            avatar = member.avatar.url if member.avatar else member.default_avatar.url
-            embed.set_thumbnail(url=avatar)
-
-            await channel.send(content=member.mention, embed=embed)
-
-            # +3 ngày super
-            if uid not in super_data:
-                super_data[uid] = {
-                    "remaining": 3 * 86400,
-                    "active": False,
-                    "last_time": int(time.time())
-                }
-            else:
-                super_data[uid]["remaining"] += 3 * 86400
-
-            birthday_data[uid]["last_year"] = year
-
-            save_data()
-            save_birthday()
-
-    await interaction.response.send_message(
-        "🎂 Đã chạy kiểm tra sinh nhật thủ công!" if found else "😴 Hôm nay không có sinh nhật nào",
-        ephemeral=True
-    )
+    else:
+        await interaction.response.send_message("❌ Chỉ dùng on/off", ephemeral=True)
 
 # =========================
 # READY
@@ -438,19 +389,11 @@ async def on_ready():
 
     load_data()
     load_birthday()
+    load_aihoi()
 
     bot.loop.create_task(birthday_checker())
 
-    for uid in list(super_data.keys()):
-        for guild in bot.guilds:
-            member = guild.get_member(int(uid))
-            if member:
-                super_tasks[uid] = bot.loop.create_task(super_timer(member))
-                break
-
     await bot.tree.sync()
-
-
 
 # =========================
 # RUN
