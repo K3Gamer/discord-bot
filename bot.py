@@ -15,13 +15,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ===== CONFIG =====
 OWNER_ID = 1146701570688430201
 
-SUPER_ROLE_NAME = "🌟Super Member"
-HOCBA_ROLE_NAME = "📖Học Bá"
 BIRTHDAY_ROLE_NAME = "🎉Birthday"
 RESTRICTED_ROLE_NAME = "🚫Restricted"
 BOT_ROLE_NAME = "🧠Bot"
 
-DATA_FILE = "super_data.json"
 BIRTHDAY_FILE = "birthday.json"
 AIHOI_FILE = "aihoi.json"
 
@@ -64,7 +61,39 @@ def save_aihoi():
 def get_role(guild, name):
     return discord.utils.get(guild.roles, name=name)
 
-# ================= AIHOI =================
+# ================= AIHOI HANDLER =================
+
+async def handle_aihoi(member, guild, channel):
+    restricted_role = get_role(guild, RESTRICTED_ROLE_NAME)
+    bot_role = get_role(guild, BOT_ROLE_NAME)
+
+    if not restricted_role:
+        restricted_role = await guild.create_role(name=RESTRICTED_ROLE_NAME)
+
+    try:
+        # remove 🧠Bot
+        if bot_role and bot_role in member.roles:
+            await member.remove_roles(bot_role)
+
+        # add restricted
+        await member.add_roles(restricted_role)
+
+        await channel.send(f"🚫 {member.mention} bị Restricted 3 giây!")
+
+        await asyncio.sleep(3)
+
+        # remove restricted
+        if restricted_role in member.roles:
+            await member.remove_roles(restricted_role)
+
+        # trả lại 🧠Bot
+        if bot_role:
+            await member.add_roles(bot_role)
+
+    except Exception as e:
+        print("AIHOI ERROR:", e)
+
+# ================= MESSAGE =================
 
 @bot.event
 async def on_message(message):
@@ -86,46 +115,12 @@ async def on_message(message):
             if message.author.id in restricted_cooldown:
                 if now - restricted_cooldown[message.author.id] < 5:
                     return
+
             restricted_cooldown[message.author.id] = now
 
-            restricted_role = get_role(guild, RESTRICTED_ROLE_NAME)
-            bot_role = get_role(guild, BOT_ROLE_NAME)
-
-            if not restricted_role:
-                restricted_role = await guild.create_role(name=RESTRICTED_ROLE_NAME)
-
-            # nếu đang bị rồi thì bỏ qua
-            if restricted_role in message.author.roles:
-                return
-
-            # remove bot role
-            if bot_role and bot_role in message.author.roles:
-                try:
-                    await message.author.remove_roles(bot_role)
-                except:
-                    pass
-
-            # add restricted
-            try:
-                await message.author.add_roles(restricted_role)
-            except:
-                pass
-
-            await message.channel.send(f"🚫 {message.author.mention} bị Restricted 3 giây!")
-
-            await asyncio.sleep(3)
-
-            # restore
-            try:
-                await message.author.remove_roles(restricted_role)
-            except:
-                pass
-
-            if bot_role:
-                try:
-                    await message.author.add_roles(bot_role)
-                except:
-                    pass
+            bot.loop.create_task(
+                handle_aihoi(message.author, guild, message.channel)
+            )
 
     await bot.process_commands(message)
 
@@ -135,19 +130,19 @@ async def on_message(message):
 async def allowaihoi(interaction: discord.Interaction, mode: str):
 
     if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("❌ No perm", ephemeral=True)
+        return await interaction.response.send_message("❌ Không có quyền", ephemeral=True)
 
     gid = str(interaction.guild.id)
 
     if mode.lower() == "on":
         aihoi_settings[gid] = True
         save_aihoi()
-        await interaction.response.send_message("✅ ON", ephemeral=True)
+        await interaction.response.send_message("✅ Đã bật", ephemeral=True)
 
     elif mode.lower() == "off":
         aihoi_settings[gid] = False
         save_aihoi()
-        await interaction.response.send_message("⛔ OFF", ephemeral=True)
+        await interaction.response.send_message("⛔ Đã tắt", ephemeral=True)
 
     else:
         await interaction.response.send_message("❌ on/off", ephemeral=True)
@@ -158,14 +153,14 @@ async def allowaihoi(interaction: discord.Interaction, mode: str):
 async def setbirthday(interaction: discord.Interaction, member: discord.Member, date: str):
 
     if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("❌ No perm", ephemeral=True)
+        return await interaction.response.send_message("❌ Không có quyền", ephemeral=True)
 
     try:
         d = int(date[:2])
         m = int(date[2:4])
         y = int(date[4:])
     except:
-        return await interaction.response.send_message("❌ DDMMYYYY", ephemeral=True)
+        return await interaction.response.send_message("❌ Format DDMMYYYY", ephemeral=True)
 
     birthday_data[str(member.id)] = {
         "day": d,
@@ -175,9 +170,9 @@ async def setbirthday(interaction: discord.Interaction, member: discord.Member, 
     }
 
     save_birthday()
-    await interaction.response.send_message("🎂 Set xong", ephemeral=True)
+    await interaction.response.send_message("🎂 Đã set", ephemeral=True)
 
-# ===== donsinhnhat =====
+# ===== DON SINH NHAT =====
 
 @bot.tree.command(name="donsinhnhat")
 async def donsinhnhat(interaction: discord.Interaction):
@@ -220,7 +215,7 @@ async def donsinhnhat(interaction: discord.Interaction):
     save_birthday()
 
     await interaction.response.send_message(
-        "🎂 Done" if found else "😴 No birthday",
+        "🎂 Đã chạy!" if found else "😴 Không có ai",
         ephemeral=True
     )
 
@@ -230,7 +225,7 @@ async def donsinhnhat(interaction: discord.Interaction):
 async def listsinhnhat(interaction: discord.Interaction):
 
     if not birthday_data:
-        return await interaction.response.send_message("❌ Chưa có data", ephemeral=True)
+        return await interaction.response.send_message("❌ Chưa có dữ liệu", ephemeral=True)
 
     msg = "📜 DANH SÁCH SINH NHẬT:\n\n"
 
