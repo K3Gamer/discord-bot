@@ -14,6 +14,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== CONFIG ======
 OWNER_ID = 1146701570688430201
+
 SUPER_ROLE_NAME = "🌟Super Member"
 HOCBA_ROLE_NAME = "📖Học Bá"
 BIRTHDAY_ROLE_NAME = "🎉Birthday"
@@ -33,6 +34,7 @@ bad_words = ["dm","đm","dmm","dcm","cc","cl","lồn","cặc","địt","đụ"]
 # =========================
 # LOAD / SAVE
 # =========================
+
 def load_data():
     global super_data
     if os.path.exists(DATA_FILE):
@@ -56,6 +58,7 @@ def save_birthday():
 # =========================
 # ROLE
 # =========================
+
 def get_role(guild, name):
     return discord.utils.get(guild.roles, name=name)
 
@@ -72,6 +75,7 @@ def format_lines(text):
 # =========================
 # CHAT FILTER + DM FORWARD
 # =========================
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -99,6 +103,7 @@ async def on_message(message):
 # =========================
 # BASIC COMMANDS
 # =========================
+
 @bot.command()
 async def chat(ctx, *, msg):
     await ctx.message.delete()
@@ -126,6 +131,7 @@ async def noilai(ctx, user_input, *, message):
 async def baitap(ctx, date, so_mon: int, *, noidung):
     await ctx.message.delete()
     lines = noidung.split(";")
+
     if len(lines) != so_mon:
         return await ctx.send("❌ Sai số môn")
 
@@ -140,6 +146,7 @@ async def baitap(ctx, date, so_mon: int, *, noidung):
 async def baobai(ctx, so_mon: int, *, noidung):
     await ctx.message.delete()
     lines = noidung.split(";")
+
     if len(lines) != so_mon:
         return await ctx.send("❌ Sai số môn")
 
@@ -153,8 +160,10 @@ async def baobai(ctx, so_mon: int, *, noidung):
 # =========================
 # SUPER SYSTEM
 # =========================
+
 async def super_timer(member):
     uid = str(member.id)
+
     while True:
         if uid not in super_data:
             return
@@ -172,6 +181,7 @@ async def super_timer(member):
 
         if data["remaining"] <= 0:
             role = get_role(member.guild, SUPER_ROLE_NAME)
+
             try:
                 if role in member.roles:
                     await member.remove_roles(role)
@@ -194,14 +204,17 @@ async def super_timer(member):
 # =========================
 # BIRTHDAY SYSTEM
 # =========================
+
 async def birthday_checker():
     await bot.wait_until_ready()
+
     while not bot.is_closed():
         day = int(time.strftime("%d"))
         month = int(time.strftime("%m"))
         year = int(time.strftime("%Y"))
 
         for guild in bot.guilds:
+
             channel = discord.utils.get(guild.text_channels, name="🗨️nhắn-tin💬")
             if not channel:
                 continue
@@ -212,12 +225,14 @@ async def birthday_checker():
 
             for member in guild.members:
                 uid = str(member.id)
+
                 if uid not in birthday_data:
                     continue
 
                 data = birthday_data[uid]
 
                 if data["day"] == day and data["month"] == month:
+
                     if data.get("last_year") == year:
                         continue
 
@@ -239,6 +254,7 @@ async def birthday_checker():
 
                     await channel.send(content=member.mention, embed=embed)
 
+                    # +3 days super
                     if uid not in super_data:
                         super_data[uid] = {
                             "remaining": 3 * 86400,
@@ -261,11 +277,165 @@ async def birthday_checker():
         await asyncio.sleep(60 * 60 * 24)
 
 # =========================
+# SLASH: SET BIRTHDAY (OWNER)
+# =========================
+
+@bot.tree.command(name="setbirthday")
+async def setbirthday(interaction: discord.Interaction, member: discord.Member, date: str):
+
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ Không có quyền", ephemeral=True)
+
+    try:
+        day = int(date[0:2])
+        month = int(date[2:4])
+        year = int(date[4:8])
+    except:
+        return await interaction.response.send_message("❌ Sai format DDMMYYYY", ephemeral=True)
+
+    birthday_data[str(member.id)] = {
+        "day": day,
+        "month": month,
+        "year": year,
+        "last_year": 0
+    }
+
+    save_birthday()
+
+    await interaction.response.send_message("🎂 Đã set sinh nhật", ephemeral=True)
+
+# =========================
+# SUPER COMMAND
+# =========================
+
+@bot.tree.command(name="supermember")
+async def supermember(interaction: discord.Interaction, mode: str):
+
+    member = interaction.user
+    guild = interaction.guild
+
+    hocba = get_role(guild, HOCBA_ROLE_NAME)
+    super_role = get_role(guild, SUPER_ROLE_NAME)
+
+    if hocba not in member.roles:
+        return await interaction.response.send_message("❌ Không phải Học Bá", ephemeral=True)
+
+    uid = str(member.id)
+
+    if uid not in super_data:
+        super_data[uid] = {
+            "remaining": SUPER_TIME,
+            "active": False,
+            "last_time": int(time.time())
+        }
+
+    data = super_data[uid]
+
+    if mode == "on":
+        data["active"] = True
+        data["last_time"] = int(time.time())
+
+        if super_role not in member.roles:
+            await member.add_roles(super_role)
+
+        if uid not in super_tasks:
+            super_tasks[uid] = bot.loop.create_task(super_timer(member))
+
+        save_data()
+
+        await interaction.response.send_message("✅ ON", ephemeral=True)
+
+    elif mode == "off":
+        data["active"] = False
+        save_data()
+
+        if super_role in member.roles:
+            await member.remove_roles(super_role)
+
+        await interaction.response.send_message("⏸️ OFF", ephemeral=True)
+
+@bot.tree.command(name="donsinhnhat")
+async def donsinhnhat(interaction: discord.Interaction):
+
+    guild = interaction.guild
+    today_day = int(time.strftime("%d"))
+    today_month = int(time.strftime("%m"))
+    year = int(time.strftime("%Y"))
+
+    channel = discord.utils.get(guild.text_channels, name="🗨️nhắn-tin💬")
+
+    if not channel:
+        return await interaction.response.send_message("❌ Không tìm thấy kênh 🗨️nhắn-tin💬", ephemeral=True)
+
+    role = discord.utils.get(guild.roles, name="🎉Birthday")
+    if not role:
+        role = await guild.create_role(name="🎉Birthday")
+
+    found = False
+
+    for member in guild.members:
+        uid = str(member.id)
+
+        if uid not in birthday_data:
+            continue
+
+        data = birthday_data[uid]
+
+        if data["day"] == today_day and data["month"] == today_month:
+
+            # tránh spam lại trong cùng năm
+            if data.get("last_year") == year:
+                continue
+
+            found = True
+            age = year - data["year"]
+
+            # add role
+            try:
+                await member.add_roles(role)
+            except:
+                pass
+
+            # embed
+            embed = discord.Embed(
+                title="🎉 CHÚC MỪNG SINH NHẬT 🎂",
+                description=f"Hôm nay là ngày sinh nhật thứ **{age}** của **{member.name}** 🎊",
+                color=0xffcc00
+            )
+
+            avatar = member.avatar.url if member.avatar else member.default_avatar.url
+            embed.set_thumbnail(url=avatar)
+
+            await channel.send(content=member.mention, embed=embed)
+
+            # +3 ngày super
+            if uid not in super_data:
+                super_data[uid] = {
+                    "remaining": 3 * 86400,
+                    "active": False,
+                    "last_time": int(time.time())
+                }
+            else:
+                super_data[uid]["remaining"] += 3 * 86400
+
+            birthday_data[uid]["last_year"] = year
+
+            save_data()
+            save_birthday()
+
+    await interaction.response.send_message(
+        "🎂 Đã chạy kiểm tra sinh nhật thủ công!" if found else "😴 Hôm nay không có sinh nhật nào",
+        ephemeral=True
+    )
+
+# =========================
 # READY
 # =========================
+
 @bot.event
 async def on_ready():
     print("Bot online:", bot.user)
+
     load_data()
     load_birthday()
 
@@ -280,7 +450,10 @@ async def on_ready():
 
     await bot.tree.sync()
 
+
+
 # =========================
 # RUN
 # =========================
+
 bot.run(os.getenv("DISCORD_TOKEN"))
